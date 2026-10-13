@@ -490,12 +490,11 @@ export default function App(){
 
   /* 초록/소운 전환 — 한 번 고르면 기기에 저장되니 화면 맨 아래에 둡니다 */
   const personSwitch=(()=>{
-    const curName=person==="me"?meName:friendName, curCol=person==="me"?GREEN:VIOLET;
+    const curName=person==="me"?meName:friendName;
     const other=person==="me"?"friend":"me", otherName=person==="me"?friendName:meName;
     return(
       <div style={{marginTop:40,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:16}}>
-          <span style={{width:8,height:8,borderRadius:"50%",background:curCol}}/>
           <span><b style={{fontWeight:700,color:"#ECEDF2"}}>{curName}</b><span style={{color:"#9A9CAA"}}>의 기록</span></span>
         </div>
         <button className="btn" onClick={()=>{setPerson(other);setSelStar(null);window.scrollTo({top:0,behavior:"smooth"});}}
@@ -510,7 +509,7 @@ export default function App(){
     );
   })();
 
-  const C={bg:"#0B0C12",surface:"#171A23",surface2:"#1D2029",ink:"#ECEDF2",sub:"#9A9CAA",line:"#282B36",lineSoft:"#22242E"};
+  const C={bg:"#0B0C12",surface:"#13151D",surface2:"#1D2029",ink:"#ECEDF2",sub:"#9A9CAA",line:"#282B36",lineSoft:"#22242E"};
 
   return (
     <div style={{background:C.bg,minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
@@ -528,7 +527,7 @@ export default function App(){
         @keyframes cburst{to{transform:translate(var(--tx),var(--ty));opacity:0}}
         .glow-pulse{animation:gp 2.4s ease-in-out infinite}@keyframes gp{0%,100%{opacity:.7}50%{opacity:1}}
         /* ── 로딩: 별자리가 이어지는 애니메이션 + 실제 화면과 같은 자리의 뼈대 ── */
-        .sk{border-radius:16px;background:linear-gradient(90deg,#15171F 0%,#1C1F28 45%,#15171F 90%);
+        .sk{border-radius:16px;background:linear-gradient(90deg,#13151D 0%,#1A1D25 45%,#13151D 90%);
           background-size:220% 100%;animation:sk 1.5s ease-in-out infinite}
         @keyframes sk{from{background-position:110% 0}to{background-position:-110% 0}}
         .ld-line{stroke-dasharray:1;stroke-dashoffset:1;animation:ldDraw 2.8s cubic-bezier(.4,0,.2,1) infinite}
@@ -545,7 +544,7 @@ export default function App(){
         input.txt,select{font-family:inherit}
         .sky{position:relative;border-radius:20px;overflow:hidden;
           background:radial-gradient(140% 110% at 50% 40%,#0e1020 0%,#080910 55%,#030305 100%);
-          box-shadow:0 8px 40px #00000060}
+          box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 8px 40px #00000060}   /* 옅은 외곽선 — 높이에 영향 없도록 inset */
         .pa-row{scrollbar-width:none;-ms-overflow-style:none;
           -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent);
           mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent)}
@@ -676,7 +675,7 @@ export default function App(){
                     const on=isLogged(h.id,selDate),wc=weekCount(h.id),tgt=tgtOf(h),done=wc>=tgt;
                     return(
                       <div key={h.id} className="tap" onClick={()=>toggleLog(h.id,selDate)}
-                        style={{background:on?"#1D212B":C.surface,
+                        style={{background:on?"#22262F":C.surface,
                           borderRadius:16,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                         <div style={{display:"flex",alignItems:"center",gap:12}}>
                           <span style={{fontSize:20,filter:on?"none":"grayscale(.4) opacity(.8)"}}>{emojiOf(h)}</span>
@@ -696,7 +695,7 @@ export default function App(){
                 : sortHabits(FRIEND_HABITS).map(h=>{
                     const tgt=tgtOf(h),done=h.done>=tgt;
                     return(
-                      <div key={h.id} style={{background:done?"#1D212B":C.surface,
+                      <div key={h.id} style={{background:done?"#22262F":C.surface,
                         borderRadius:16,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                         <div style={{display:"flex",alignItems:"center",gap:12}}>
                           <span style={{fontSize:20}}>{emojiOf(h)}</span>
@@ -1133,7 +1132,7 @@ function ProgressArea({C,rows}){
           {/* 이름을 그대로 적습니다 — 보는 사람에 따라 '나'가 달라지므로 */}
           <span style={{width:52,height:26,display:"flex",alignItems:"center",gap:7,fontSize:13,fontWeight:700,
             color:C.ink,flex:"0 0 auto",marginTop:4,whiteSpace:"nowrap",overflow:"hidden"}}>
-            <span style={{width:7,height:7,borderRadius:"50%",background:row.color,flex:"0 0 auto"}}/>{row.who}</span>
+            {row.who}</span>
           {/* 한 줄로 고정하고, 다 못 담으면 좌우로 스와이프해서 봅니다 */}
           <div className="pa-row" style={{display:"flex",flexWrap:"nowrap",gap:9,flex:1,minWidth:0,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
             {row.items.map(it=>(
@@ -1188,10 +1187,12 @@ function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr
     <div style={{fontSize:13,fontWeight:700,color:now?C.ink:C.sub}}>{t}</div>
   );
 
+  /* '오늘' 탭의 밤하늘 패널과 같은 비율(560:296)·같은 옅은 외곽선 — 두 탭 첫 화면의 높이가 맞도록 */
   return(
-    <div style={{background:C.surface,borderRadius:16,
-      padding:"14px 14px",marginBottom:32,
-      display:"grid",gridTemplateColumns:"auto 1fr 1fr",columnGap:10,rowGap:10,alignItems:"center"}}>
+    <div style={{background:C.surface,borderRadius:20,border:"1px solid rgba(255,255,255,.07)",
+      aspectRatio:"560/296",padding:"12px 14px 14px",marginBottom:32,
+      display:"grid",gridTemplateColumns:"auto 1fr 1fr",gridTemplateRows:`auto repeat(${rows.length},minmax(0,1fr))`,
+      columnGap:10,rowGap:8,alignItems:"center"}}>
       <span/>
       {head("지난주")}
       {head("이번 주",true)}
@@ -1200,7 +1201,7 @@ function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr
         <React.Fragment key={r.name}>
           <span style={{fontSize:13,fontWeight:700,color:C.ink,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,
             justifySelf:"start",maxWidth:56,overflow:"hidden"}}>
-            <span style={{width:7,height:7,borderRadius:"50%",background:r.color,flex:"0 0 auto"}}/>{r.name}</span>
+            {r.name}</span>
           <MiniSky C={C} stars={r.past} color={r.color} past/>
           <MiniSky C={C} stars={r.now} color={r.color}/>
         </React.Fragment>
@@ -1212,35 +1213,38 @@ function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr
 /* 작은 별자리 썸네일 — 큰 밤하늘과 달리 글로우 없이 담백하게.
    아래쪽 띠가 그 주에 채운 목표 비율입니다. */
 function MiniSky({C,stars,color,past}){
-  const W=120,H=80,BAR_Y=70,BAR_X=9,BAR_W=W-BAR_X*2;
-  const pts=buildPoints(stars,[W/2,(BAR_Y-6)/2+3],0.52);
+  const W=120,H=64;
+  const pts=buildPoints(stars,[W/2,H/2],0.52);
   const seq=connOrder(stars.length).map(i=>({s:stars[i],p:pts[i]})).filter(x=>x.p);
   const done=stars.filter(s=>s.complete).length;
   const ratio=stars.length?done/stars.length:0;
+  /* 칸 높이에 맞춰 늘어나도록: 바탕은 div, 별은 비율 유지 SVG, 아래 띠는 HTML */
   return(
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{display:"block",borderRadius:9,
-      background:"radial-gradient(120% 100% at 50% 40%,#10131f 0%,#07080e 70%,#04050a 100%)",
-      opacity:past?0.8:1}}>
-      <title>{`${done}/${stars.length} 완성`}</title>
-      {seq.slice(1).map((x,i)=>{
-        const a=seq[i].p,b=x.p,m=Math.min(seq[i].s.ratio,x.s.ratio);
-        return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color}
-          strokeWidth={m>0.3?0.8:0.4} opacity={m*0.5+0.08} strokeLinecap="round"/>;
-      })}
-      {stars.map((s,i)=>{
-        const p=pts[i]; if(!p) return null;
-        const r=1.0+s.ratio*1.9;
-        return(
-          <g key={s.id}>
-            {s.complete&&<circle cx={p.x} cy={p.y} r={r*2.6} fill={color} opacity={0.2}/>}
-            <circle cx={p.x} cy={p.y} r={r} fill={s.complete?"#FFFFFF":color} opacity={s.complete?1:0.25+s.ratio*0.7}/>
-          </g>
-        );
-      })}
+    <div title={`${done}/${stars.length} 완성`} style={{position:"relative",alignSelf:"stretch",minHeight:0,borderRadius:10,overflow:"hidden",
+      background:"radial-gradient(120% 100% at 50% 40%,#10131f 0%,#07080e 70%,#04050a 100%)",opacity:past?0.8:1}}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
+        style={{position:"absolute",left:0,top:0,width:"100%",height:"calc(100% - 12px)"}}>
+        {seq.slice(1).map((x,i)=>{
+          const a=seq[i].p,b=x.p,m=Math.min(seq[i].s.ratio,x.s.ratio);
+          return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color}
+            strokeWidth={m>0.3?0.8:0.4} opacity={m*0.5+0.08} strokeLinecap="round"/>;
+        })}
+        {stars.map((s,i)=>{
+          const p=pts[i]; if(!p) return null;
+          const r=1.0+s.ratio*1.9;
+          return(
+            <g key={s.id}>
+              {s.complete&&<circle cx={p.x} cy={p.y} r={r*2.6} fill={color} opacity={0.2}/>}
+              <circle cx={p.x} cy={p.y} r={r} fill={s.complete?"#FFFFFF":color} opacity={s.complete?1:0.25+s.ratio*0.7}/>
+            </g>
+          );
+        })}
+      </svg>
       {/* 이 주에 채운 목표 비율 */}
-      <rect x={BAR_X} y={BAR_Y} width={BAR_W} height="3" rx="1.5" fill="#FFFFFF" opacity="0.08"/>
-      {ratio>0&&<rect x={BAR_X} y={BAR_Y} width={BAR_W*ratio} height="3" rx="1.5" fill={color} opacity={past?0.75:1}/>}
-    </svg>
+      <div style={{position:"absolute",left:9,right:9,bottom:8,height:3,borderRadius:2,background:"rgba(255,255,255,.08)"}}>
+        {ratio>0&&<div style={{width:`${ratio*100}%`,height:"100%",borderRadius:2,background:color,opacity:past?0.75:1}}/>}
+      </div>
+    </div>
   );
 }
 
@@ -1293,11 +1297,11 @@ function ChronicleRow({h,C,col,d}){
               style={{flex:1,minWidth:0,height:H,borderRadius:6,position:"relative",overflow:"hidden",
                 background:c.pre
                   ?"repeating-linear-gradient(135deg,#ffffff0a 0 2px,transparent 2px 6px)"
-                  :C.lineSoft,
+                  :inRun.has(i)?"transparent":C.lineSoft,   // 콤보 칸은 위 블록이 반투명이라 아래 칸 경계가 비치지 않도록
                 opacity:c.pre?0.5:1}}>
               {!c.pre&&!inRun.has(i)&&<div style={{position:"absolute",left:0,right:0,bottom:0,
                 height:`${Math.max(c.ratio*100, c.ratio>0?12:0)}%`,
-                background:c.complete?col:col+"55"}}/>}
+                background:c.complete?col+"8C":col+"38"}}/>}
             </div>
           ))}
         </div>
@@ -1305,8 +1309,8 @@ function ChronicleRow({h,C,col,d}){
         {runs.map(r=>(
           <div key={r.start} title={`${r.len}주 연속 달성`}
             style={{position:"absolute",top:0,height:H,...spanPos(r.start,r.len,n),
-              background:col,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",
-              color:"#0B0C12",fontSize:13,fontWeight:800,whiteSpace:"nowrap",overflow:"hidden"}}>
+              background:col+"8C",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",
+              color:"#F3F5FA",fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden"}}>
             {r.len}주 연속
           </div>
         ))}
