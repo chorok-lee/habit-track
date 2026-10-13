@@ -73,6 +73,8 @@ const guessEmoji = (name) => {
   return "";
 };
 const emojiOf = (h) => h.emoji || guessEmoji(h.name) || "⭐";
+const hasBatchim = (s) => { const c=s.charCodeAt(s.length-1); return c>=0xAC00&&c<=0xD7A3&&(c-0xAC00)%28!==0; };
+const subjName = (n) => hasBatchim(n) ? `${n}이가` : `${n}가`;   // 초록 → 초록이가, 소운 → 소운이가
 const tgtOf = (h) => h.kind==="daily" ? 7 : h.target;
 /* 주 7회(매일) → 주 1회 순으로, 같은 주기면 가나다순 */
 const sortHabits = (list) => [...(list||[])].sort((a,b)=>{
@@ -384,12 +386,13 @@ export default function App(){
   const lettersOn=isNotion&&(letters.length>0||owners.length>1);
 
   const openBox=()=>setModal({type:"box"});
-  const compose=(to)=>setModal({type:"compose",to:to||partner});
+  /* from: 보내는 사람. 칭찬하기는 지금 보고 있는 화면의 주인이 상대에게 보냅니다 */
+  const compose=(to,from)=>setModal({type:"compose",to:to||partner,from});
   const closeLetter=()=>setModal(null);
-  const sendLetter=async(to,text)=>{
+  const sendLetter=async(to,text,from)=>{
     setSending(true);
     try{
-      await api("/api/messages",{method:"POST",body:JSON.stringify({from:who,to:to,text:text})});
+      await api("/api/messages",{method:"POST",body:JSON.stringify({from:from||who,to:to,text:text})});
       setModal(null); setToast("별똥별을 보냈어요");
     }catch(e){ setToast(e.message||"보내지 못했어요."); }
     finally{ setSending(false); }
@@ -483,18 +486,25 @@ export default function App(){
     : (isNotion && (staleWarn || ownerWarn)) || "";
 
   /* 초록/소운 전환 — 한 번 고르면 기기에 저장되니 화면 맨 아래에 둡니다 */
-  const personSwitch=(
-    <div style={{display:"flex",justifyContent:"center",marginTop:40}}>
-      <div style={{display:"flex",gap:3,background:"#171A23",borderRadius:12,padding:3}}>
-        {[["me",meName,GREEN],["friend",friendName,VIOLET]].map(([k,l,col])=>(
-          <button key={k} className="btn" onClick={()=>{setPerson(k);setSelStar(null);window.scrollTo({top:0,behavior:"smooth"});}}
-            style={{padding:"8px 22px",borderRadius:9,border:"none",fontSize:15,fontWeight:700,
-              background:person===k?col:"transparent",color:person===k?"#0B0C12":"#9A9CAA",
-              transition:"background .18s,color .18s"}}>{l}</button>
-        ))}
+  const personSwitch=(()=>{
+    const curName=person==="me"?meName:friendName, curCol=person==="me"?GREEN:VIOLET;
+    const other=person==="me"?"friend":"me", otherName=person==="me"?friendName:meName;
+    return(
+      <div style={{marginTop:40,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,
+        background:"#171A23",borderRadius:16,padding:"10px 10px 10px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:15,minWidth:0}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:curCol,flex:"0 0 auto"}}/>
+          <span style={{whiteSpace:"nowrap"}}><b style={{fontWeight:700,color:"#ECEDF2"}}>{curName}</b>
+            <span style={{color:"#9A9CAA"}}>의 기록</span></span>
+        </div>
+        <button className="btn" onClick={()=>{setPerson(other);setSelStar(null);window.scrollTo({top:0,behavior:"smooth"});}}
+          style={{flex:"0 0 auto",background:"#1D2029",color:"#ECEDF2",border:"none",borderRadius:11,
+            padding:"10px 14px",fontSize:14,fontWeight:700,fontFamily:"inherit"}}>
+          {otherName} 기록 보기
+        </button>
       </div>
-    </div>
-  );
+    );
+  })();
 
   const C={bg:"#0B0C12",surface:"#171A23",surface2:"#1D2029",ink:"#ECEDF2",sub:"#9A9CAA",line:"#282B36",lineSoft:"#22242E"};
 
@@ -645,8 +655,8 @@ export default function App(){
             <ProgressArea C={C} rows={[{who:meName,color:GREEN,items:meProg},{who:friendName,color:VIOLET,items:frProg}]}/>
             {/* 지금 보고 있지 않은 쪽의 달성 소식 — 초록 화면엔 소운, 소운 화면엔 초록 */}
             {person==="me"
-              ? <CheerCard C={C} stars={frStars} name={friendName} color={VIOLET}/>
-              : <CheerCard C={C} stars={myStars} name={meName} color={GREEN}/>}
+              ? <CheerCard C={C} stars={frStars} name={friendName} onPraise={lettersOn?()=>compose(friendName,meName):null}/>
+              : <CheerCard C={C} stars={myStars} name={meName} onPraise={lettersOn?()=>compose(meName,friendName):null}/>}
 
             {/* 날짜 스테퍼 — 위쪽 브리핑(하늘·진행률·소식)과 구획을 분명히 나눔 */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"36px 0 14px"}}>
@@ -664,13 +674,13 @@ export default function App(){
                     const col=activeColor;
                     return(
                       <div key={h.id} className="tap" onClick={()=>toggleLog(h.id,selDate)}
-                        style={{background:on?col+"26":C.surface,
+                        style={{background:on?"#1D212B":C.surface,
                           borderRadius:16,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                         <div style={{display:"flex",alignItems:"center",gap:12}}>
                           <span style={{fontSize:20,filter:on?"none":"grayscale(.4) opacity(.8)"}}>{emojiOf(h)}</span>
                           <div>
                             <div style={{fontSize:15,fontWeight:600}}>{h.name}</div>
-                            <div className="mono" style={{fontSize:13,color:done?col:C.sub,marginTop:3,fontWeight:done?700:400}}>
+                            <div className="mono" style={{fontSize:13,color:done?C.ink:C.sub,marginTop:3,fontWeight:done?700:400}}>
                               {done?"완성":`${wc}/${tgt}`}
                             </div>
                           </div>
@@ -684,13 +694,13 @@ export default function App(){
                 : sortHabits(FRIEND_HABITS).map(h=>{
                     const tgt=tgtOf(h),done=h.done>=tgt;
                     return(
-                      <div key={h.id} style={{background:done?VIOLET+"26":C.surface,
+                      <div key={h.id} style={{background:done?"#1D212B":C.surface,
                         borderRadius:16,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                         <div style={{display:"flex",alignItems:"center",gap:12}}>
                           <span style={{fontSize:20}}>{emojiOf(h)}</span>
                           <div>
                             <div style={{fontSize:15,fontWeight:600}}>{h.name}</div>
-                            <div className="mono" style={{fontSize:13,color:done?VIOLET:C.sub,marginTop:3,fontWeight:done?700:400}}>
+                            <div className="mono" style={{fontSize:13,color:done?C.ink:C.sub,marginTop:3,fontWeight:done?700:400}}>
                               {done?"완성":`${h.done}/${tgt}`}
                             </div>
                           </div>
@@ -713,8 +723,8 @@ export default function App(){
             {lettersOn&&
               <button className="btn" onClick={()=>compose(person==="me"?partner:friendName)}
                 style={{width:"100%",marginTop:14,padding:"14px 0",borderRadius:14,fontSize:15,fontWeight:600,
-                  color:"#1A1405",background:"#FFE6B0",border:"none"}}>
-                {(person==="me"?partner:friendName)}에게 별똥별 보내기
+                  color:C.ink,background:C.surface,border:"none"}}>
+                <span style={{color:"#FFE6B0",marginRight:7}}>✦</span>{(person==="me"?partner:friendName)}에게 별똥별 보내기
               </button>}
 
             {/* 노션 모드에서는 목록을 노션에서 관리하므로, 눌러도 안내만 나오던 버튼을 감춥니다 */}
@@ -757,7 +767,7 @@ export default function App(){
           onReply={()=>setModal({type:"compose",to:modal.letter.from||partner})}/>}
       {modal&&modal.type==="compose"&&
         <ComposeSheet C={C} to={modal.to} sending={sending}
-          onClose={()=>setModal(null)} onSend={(txt)=>sendLetter(modal.to,txt)}/>}
+          onClose={()=>setModal(null)} onSend={(txt)=>sendLetter(modal.to,txt,modal.from)}/>}
       {modal&&modal.type==="box"&&
         <LetterBox C={C} letters={letters} who={who} owners={owners.length>1?owners:[meName,friendName]}
           onPick={(l)=>setModal({type:"read",letter:l})} onClose={()=>setModal(null)}
@@ -1120,9 +1130,9 @@ function ProgressArea({C,rows}){
       {rows.map((row,ri)=>(
         <div key={ri} style={{display:"flex",alignItems:"flex-start",gap:12,minWidth:0}}>
           {/* 이름을 그대로 적습니다 — 보는 사람에 따라 '나'가 달라지므로 */}
-          <span style={{minWidth:30,height:26,padding:"0 9px",borderRadius:13,background:row.color,color:"#0B0C12",
-            fontSize:13,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",
-            flex:"0 0 auto",marginTop:4,whiteSpace:"nowrap"}}>{row.who}</span>
+          <span style={{width:52,height:26,display:"flex",alignItems:"center",gap:7,fontSize:13,fontWeight:700,
+            color:C.ink,flex:"0 0 auto",marginTop:4,whiteSpace:"nowrap",overflow:"hidden"}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:row.color,flex:"0 0 auto"}}/>{row.who}</span>
           {/* 한 줄로 고정하고, 다 못 담으면 좌우로 스와이프해서 봅니다 */}
           <div className="pa-row" style={{display:"flex",flexWrap:"nowrap",gap:9,flex:1,minWidth:0,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
             {row.items.map(it=>(
@@ -1143,18 +1153,19 @@ function ProgressArea({C,rows}){
 /* ── 상대가 이번 주에 채운 목표 알림 (양쪽 화면 모두) ──
    반응 이모지 버튼은 뺐습니다 — 어디에도 전달되지 않는 장식이었고,
    진짜 응원은 아래 '별똥별 보내기'로 보냅니다. */
-function CheerCard({C,stars,name,color}){
-  const done=(stars||[]).filter(s=>s.complete);
-  if(!done.length) return null;
+function CheerCard({C,stars,name,onPraise}){
+  const n=(stars||[]).filter(s=>s.complete).length;
+  if(!n) return null;
   return(
-    <div style={{display:"flex",alignItems:"center",gap:10,background:C.surface,
-      borderRadius:14,padding:"12px 14px",marginBottom:14}}>
-      <span style={{display:"flex",gap:3,flex:"0 0 auto"}}>
-        {done.slice(0,3).map(f=><span key={f.id} style={{fontSize:16}}>{f.emoji}</span>)}
-      </span>
-      <div style={{fontSize:14,lineHeight:1.5,color:C.sub,wordBreak:"keep-all"}}>
-        <b style={{color,fontWeight:700}}>{name}</b> · 목표 {done.length}개 달성
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,background:C.surface,
+      borderRadius:14,padding:"12px 12px 12px 16px",marginBottom:14}}>
+      <div style={{fontSize:14,lineHeight:1.5,color:C.ink,wordBreak:"keep-all"}}>
+        {subjName(name)} 습관 {n}개를 쭉 지켰어요
       </div>
+      {onPraise&&
+        <button className="btn" onClick={onPraise}
+          style={{flex:"0 0 auto",background:C.surface2,color:C.ink,border:"none",borderRadius:10,
+            padding:"8px 13px",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>칭찬하기</button>}
     </div>
   );
 }
@@ -1187,8 +1198,9 @@ function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr
 
       {rows.map(r=>(
         <React.Fragment key={r.name}>
-          <span style={{fontSize:13,fontWeight:700,color:r.color,whiteSpace:"nowrap",
-            justifySelf:"start",maxWidth:48,overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</span>
+          <span style={{fontSize:13,fontWeight:700,color:C.ink,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,
+            justifySelf:"start",maxWidth:56,overflow:"hidden"}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:r.color,flex:"0 0 auto"}}/>{r.name}</span>
           <MiniSky C={C} stars={r.past} color={r.color} past/>
           <MiniSky C={C} stars={r.now} color={r.color}/>
         </React.Fragment>
@@ -1270,7 +1282,7 @@ function ChronicleRow({h,C,col,d}){
           <span style={{fontSize:16,fontWeight:700,wordBreak:"keep-all"}}>{h.name}</span>
         </div>
         {d.window>0&&<span className="mono" style={{fontSize:13,flex:"0 0 auto",fontWeight:700,
-          color:d.recent>0?col:C.sub,opacity:d.recent>0?1:.6}}>✦ {d.recent}/{d.window}</span>}
+          color:d.recent>0?C.ink:C.sub,opacity:d.recent>0?1:.6}}>✦ {d.recent}/{d.window}</span>}
       </div>
 
       <div style={{position:"relative"}}>
@@ -1306,7 +1318,7 @@ function ChronicleRow({h,C,col,d}){
           return(
             /* 긴 "10월 1주차"는 칸보다 조금 넓어서 양옆 여백으로 살짝 넘칩니다(이웃은 짧은 "n주차"라 안 겹침) */
             <div key={i} style={{flex:1,minWidth:0,display:"flex",justifyContent:"center",whiteSpace:"nowrap",
-              letterSpacing:"-0.02em",fontSize:"clamp(11px, 3.4vw, 12px)",color:c.current?col:C.sub,fontWeight:c.current?700:500,
+              letterSpacing:"-0.02em",fontSize:"clamp(11px, 3.4vw, 12px)",color:c.current?C.ink:C.sub,fontWeight:c.current?700:500,
               opacity:c.pre?0.4:c.current?1:0.75}}>
               {showMonth[i]?`${wk.m}월 ${wk.w}주차`:`${wk.w}주차`}
             </div>
