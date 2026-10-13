@@ -529,6 +529,8 @@ export default function App(){
         .mono{font-family:'Space Mono',monospace;font-variant-numeric:tabular-nums}
         .tap{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;transition:transform .18s cubic-bezier(.34,1.56,.64,1),border-color .2s,background .25s,box-shadow .25s}
         .tap:active{transform:scale(.96)}
+        .row-tap{-webkit-tap-highlight-color:transparent;user-select:none}
+        .row-tap:active > span{transform:scale(.9)}
         .btn{transition:opacity .15s,transform .12s;cursor:pointer}.btn:hover{opacity:.85}.btn:active{transform:translateY(1px)}
         .fade{animation:fade .34s ease}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
         .conf{position:absolute;left:50%;top:44%;width:6px;height:6px;opacity:1;border-radius:50%;animation:cburst 1.4s ease-out forwards}
@@ -667,65 +669,50 @@ export default function App(){
               : <CheerCard C={C} stars={myStars} name={meName} onPraise={lettersOn?()=>compose(meName,friendName):null}/>}
 
             {/* 날짜 스테퍼 — 위쪽 브리핑(하늘·진행률·소식)과 구획을 분명히 나눔 */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:14,margin:"36px 0 14px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,margin:"36px 0 14px"}}>
               <button className="btn" onClick={()=>setSelDate(toISO(addDays(fromISO(selDate),-1)))} style={arrowBtn(C)}>←</button>
-              <div style={{fontSize:16,fontWeight:700,minWidth:132,textAlign:"center"}}>{fromISO(selDate).getMonth()+1}월 {fromISO(selDate).getDate()}일 ({WD[(fromISO(selDate).getDay()+6)%7]})</div>
+              <div style={{fontSize:16,fontWeight:700,minWidth:118,textAlign:"center"}}>{fromISO(selDate).getMonth()+1}월 {fromISO(selDate).getDate()}일 ({WD[(fromISO(selDate).getDay()+6)%7]})</div>
               <button className="btn" onClick={()=>{const n=addDays(fromISO(selDate),1);if(n<=new Date())setSelDate(toISO(n));}}
                 style={{...arrowBtn(C),opacity:selDate>=today?0.3:1}}>→</button>
             </div>
 
-            {/* 습관 카드 — 노션 모드에서는 양쪽 다 실제 기록, 양쪽 다 체크 가능 */}
-            <div style={{display:"flex",flexDirection:"column",gap:9}}>
-              {(isNotion||person==="me")
-                ? activeHabits.map(h=>{
-                    const on=isLogged(h.id,selDate),wc=weekCount(h.id),tgt=tgtOf(h),done=wc>=tgt;
-                    return(
-                      <div key={h.id} className="tap" onClick={()=>toggleLog(h.id,selDate)}
-                        style={{background:on?"#22262F":C.surface,
-                          borderRadius:16,padding:"18px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:12}}>
-                          <span style={{fontSize:20,filter:on?"none":"grayscale(.4) opacity(.8)"}}>{emojiOf(h)}</span>
-                          <div>
-                            <div style={{fontSize:15,fontWeight:600}}>{h.name}</div>
-                            <div className="mono" style={{fontSize:13,color:done?C.ink:C.sub,marginTop:3,fontWeight:done?700:400}}>
-                              {done?"완성":`${wc}/${tgt}`}
-                            </div>
-                          </div>
-                        </div>
-                        <span style={{width:28,height:28,borderRadius:9,flex:"0 0 auto",border:on?"none":"2px solid #343846",
-                          background:on?"#FFFFFF":"transparent",display:"flex",alignItems:"center",justifyContent:"center",
-                          color:"#0B0C12",fontSize:15,fontWeight:800}}>{on?"✓":""}</span>
-                      </div>
-                    );
-                  })
-                : sortHabits(FRIEND_HABITS).map(h=>{
-                    const tgt=tgtOf(h),done=h.done>=tgt;
-                    return(
-                      <div key={h.id} style={{background:done?"#22262F":C.surface,
-                        borderRadius:16,padding:"18px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:12}}>
-                          <span style={{fontSize:20}}>{emojiOf(h)}</span>
-                          <div>
-                            <div style={{fontSize:15,fontWeight:600}}>{h.name}</div>
-                            <div className="mono" style={{fontSize:13,color:done?C.ink:C.sub,marginTop:3,fontWeight:done?700:400}}>
-                              {done?"완성":`${h.done}/${tgt}`}
-                            </div>
-                          </div>
-                        </div>
-                        <span style={{width:28,height:28,borderRadius:9,flex:"0 0 auto",border:done?"none":"2px solid #343846",
-                          background:done?"#FFFFFF":"transparent",display:"flex",alignItems:"center",justifyContent:"center",
-                          color:"#0B0C12",fontSize:15,fontWeight:800}}>{done?"✓":""}</span>
-                      </div>
-                    );
-                  })
-              }
-              {isNotion&&activeHabits.length===0&&
-                <div style={{background:C.surface,borderRadius:16,padding:"18px 16px",
+            {/* 습관 목록 — 카드 하나 안에 항목을 나란히, 항목 사이는 가는 구분선.
+                노션 모드에서는 양쪽 다 실제 기록, 양쪽 다 체크 가능 */}
+            {(()=>{
+              const rows=(isNotion||person==="me")
+                ? activeHabits.map(h=>{const wc=weekCount(h.id),tgt=tgtOf(h);
+                    return {h,on:isLogged(h.id,selDate),sub:wc>=tgt?"완성":`${wc}/${tgt}`,done:wc>=tgt,onTap:()=>toggleLog(h.id,selDate)};})
+                : sortHabits(FRIEND_HABITS).map(h=>{const tgt=tgtOf(h),d=h.done>=tgt;
+                    return {h,on:d,sub:d?"완성":`${h.done}/${tgt}`,done:d,onTap:null};});
+              if(!rows.length) return isNotion&&
+                <div style={{background:C.surface,borderRadius:20,padding:"18px 16px",
                   fontSize:14,color:C.sub,lineHeight:1.6,textAlign:"center"}}>
                   소유자가 <b style={{color:C.ink,fontWeight:600}}>{person==="me"?meName:friendName}</b>인 습관이 노션에 없어요.
                   {owners.length>0&&<><br/><span className="mono" style={{fontSize:12}}>DB에 있는 소유자: {owners.join(" · ")}</span></>}
-                </div>}
-            </div>
+                </div>;
+              return(
+                <div style={{background:C.surface,borderRadius:20,padding:"4px 16px"}}>
+                  {rows.map((r,i)=>(
+                    <div key={r.h.id} className={r.onTap?"row-tap":""} onClick={r.onTap||undefined}
+                      style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"16px 0",
+                        borderTop:i?`1px solid ${C.lineSoft}`:"none",cursor:r.onTap?"pointer":"default"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:14,minWidth:0}}>
+                        {/* 이모지마다 크기감이 달라 보이지 않도록 같은 원 안에 작게 */}
+                        <span style={{width:40,height:40,borderRadius:"50%",background:"#1D2029",flex:"0 0 auto",
+                          display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,lineHeight:1}}>{emojiOf(r.h)}</span>
+                        <div style={{minWidth:0}}>
+                          <div style={{fontSize:15,fontWeight:600,wordBreak:"keep-all"}}>{r.h.name}</div>
+                          <div className="mono" style={{fontSize:13,color:r.done?C.ink:C.sub,marginTop:3,fontWeight:r.done?700:400}}>{r.sub}</div>
+                        </div>
+                      </div>
+                      <span style={{width:28,height:28,borderRadius:9,flex:"0 0 auto",border:r.on?"none":"2px solid #343846",
+                        background:r.on?"#FFFFFF":"transparent",display:"flex",alignItems:"center",justifyContent:"center",
+                        color:"#0B0C12",fontSize:15,fontWeight:800,transition:"background .15s"}}>{r.on?"✓":""}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {lettersOn&&
               <button className="btn" onClick={()=>compose(person==="me"?partner:friendName)}
@@ -830,7 +817,7 @@ function LoadingView({C,tab}){
             <div className="sk" style={{height:92,marginBottom:14}}/>
             <div className="sk" style={{height:42,margin:"36px 0 14px",borderRadius:12}}/>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
-              {[0,1,2,3].map(i=><div key={i} className="sk" style={{height:64,animationDelay:`${i*0.08}s`}}/>)}
+              <div className="sk" style={{height:296,borderRadius:20}}/>
             </div>
           </>
         : <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -1402,5 +1389,5 @@ const BTN_PRIMARY={background:"#FFFFFF",color:"#0B0C12",border:"none",borderRadi
 /* secondary 채움색 = 상단 오늘/회고 토글의 선택 안 된 칸(트랙) 색 */
 const FILL_2="#1F222B";
 const BTN_FILL={background:FILL_2,color:"#ECEDF2",border:"none",borderRadius:999,fontWeight:600,fontFamily:"inherit",cursor:"pointer"};
-function arrowBtn(C){return{...BTN_FILL,width:42,height:42,fontSize:16,lineHeight:1,padding:0};}
+function arrowBtn(C){return{...BTN_FILL,width:32,height:32,fontSize:14,lineHeight:1,padding:0};}
 function inp(C,extra){return{border:`1px solid ${C.line}`,borderRadius:9,padding:"9px 11px",fontSize:14,background:C.surface2,color:C.ink,fontFamily:"inherit",outline:"none",...extra};}
