@@ -482,6 +482,20 @@ export default function App(){
     ? (sync.error || "노션에 연결하지 못해 이 기기에만 저장되고 있어요.")
     : (isNotion && (staleWarn || ownerWarn)) || "";
 
+  /* 초록/소운 전환 — 한 번 고르면 기기에 저장되니 화면 맨 아래에 둡니다 */
+  const personSwitch=(
+    <div style={{display:"flex",justifyContent:"center",marginTop:40}}>
+      <div style={{display:"flex",gap:3,background:"#171A23",borderRadius:12,padding:3}}>
+        {[["me",meName,GREEN],["friend",friendName,VIOLET]].map(([k,l,col])=>(
+          <button key={k} className="btn" onClick={()=>{setPerson(k);setSelStar(null);window.scrollTo({top:0,behavior:"smooth"});}}
+            style={{padding:"8px 22px",borderRadius:9,border:"none",fontSize:15,fontWeight:700,
+              background:person===k?col:"transparent",color:person===k?"#0B0C12":"#9A9CAA",
+              transition:"background .18s,color .18s"}}>{l}</button>
+        ))}
+      </div>
+    </div>
+  );
+
   const C={bg:"#0B0C12",surface:"#171A23",surface2:"#1D2029",ink:"#ECEDF2",sub:"#9A9CAA",line:"#282B36",lineSoft:"#22242E"};
 
   return (
@@ -584,44 +598,35 @@ export default function App(){
       `}</style>
 
       <div className="wrap">
-        <header style={{paddingTop:28,paddingBottom:14}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <h1 style={{fontSize:22,fontWeight:800,letterSpacing:"-0.02em",margin:0}}>습관 별자리 ✨</h1>
-            {/* 최상단 우측 페이지 전환 토글 */}
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-            {lettersOn&&
-              <button className="btn" onClick={openBox} aria-label="받은 편지"
-                style={{position:"relative",background:C.surface,border:"none",borderRadius:11,
-                  width:36,height:34,color:"#FFE6B0",fontSize:14,lineHeight:1,padding:0}}>
-                ✦
-                {unread.length>0&&<span style={{position:"absolute",top:5,right:6,width:6,height:6,
-                  borderRadius:"50%",background:"#FFE6B0",boxShadow:"0 0 6px #FFE6B0"}}/>}
-              </button>}
-            <div style={{display:"flex",gap:3,background:C.surface,borderRadius:12,padding:3}}>
-              {[["me",meName,GREEN],["friend",friendName,VIOLET]].map(([k,l,col])=>(
-                <button key={k} className="btn" onClick={()=>{setPerson(k);setSelStar(null);}}
-                  style={{padding:"6px 14px",borderRadius:9,border:"none",fontSize:14,fontWeight:700,
-                    background:person===k?col:"transparent",
-                    color:person===k?"#0B0C12":C.sub,
+        {/* 헤더 — 일반적인 앱 헤더 형식: 가운데 화면 전환, 오른쪽 편지함 */}
+        <header className="navbar" style={{paddingTop:16,paddingBottom:16,marginBottom:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center"}}>
+            <span/>
+            <div role="tablist" style={{display:"flex",gap:3,background:C.surface,borderRadius:12,padding:3}}>
+              {[["sky","오늘"],["review","회고"]].map(([k,l])=>(
+                <button key={k} role="tab" aria-selected={tab===k} className="btn" onClick={()=>setTab(k)}
+                  style={{padding:"7px 20px",borderRadius:9,border:"none",fontSize:15,fontWeight:700,
+                    background:tab===k?"#2C303C":"transparent",color:tab===k?C.ink:C.sub,
                     transition:"background .18s,color .18s"}}>{l}</button>
               ))}
             </div>
+            <div style={{justifySelf:"end"}}>
+              {lettersOn&&
+                <button className="btn" onClick={openBox} aria-label="받은 편지"
+                  style={{position:"relative",background:C.surface,border:"none",borderRadius:11,
+                    width:38,height:38,color:"#FFE6B0",fontSize:15,lineHeight:1,padding:0}}>
+                  ✦
+                  {unread.length>0&&<span style={{position:"absolute",top:6,right:7,width:6,height:6,
+                    borderRadius:"50%",background:"#FFE6B0"}}/>}
+                </button>}
             </div>
           </div>
           {notice&&
-            <div style={{marginTop:10,background:"#2A2113",borderRadius:12,
+            <div style={{marginTop:12,background:"#2A2113",borderRadius:12,
               padding:"11px 14px",fontSize:13,color:"#E8C879",lineHeight:1.55}}>
               {notice}
             </div>}
         </header>
-
-        <nav className="navbar" style={{display:"flex",gap:22,marginBottom:20}}>
-          {[["sky","밤하늘"],["review","회고"]].map(([k,l])=>(
-            <button key={k} className="btn" onClick={()=>setTab(k)} style={{background:"none",border:"none",padding:"10px 0",fontSize:15,
-              fontWeight:tab===k?700:500,color:tab===k?C.ink:C.sub,
-              borderBottom:tab===k?`2.5px solid ${C.ink}`:"2.5px solid transparent",marginBottom:-1}}>{l}</button>
-          ))}
-        </nav>
 
         {booting&&<LoadingView C={C} tab={tab}/>}
 
@@ -643,8 +648,8 @@ export default function App(){
               ? <CheerCard C={C} stars={frStars} name={friendName} color={VIOLET}/>
               : <CheerCard C={C} stars={myStars} name={meName} color={GREEN}/>}
 
-            {/* 날짜 스테퍼 */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"18px 0 12px"}}>
+            {/* 날짜 스테퍼 — 위쪽 브리핑(하늘·진행률·소식)과 구획을 분명히 나눔 */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"36px 0 14px"}}>
               <button className="btn" onClick={()=>setSelDate(toISO(addDays(fromISO(selDate),-1)))} style={arrowBtn(C)}>←</button>
               <div style={{fontSize:16,fontWeight:700}}>{fromISO(selDate).getMonth()+1}월 {fromISO(selDate).getDate()}일 ({WD[(fromISO(selDate).getDay()+6)%7]})</div>
               <button className="btn" onClick={()=>{const n=addDays(fromISO(selDate),1);if(n<=new Date())setSelDate(toISO(n));}}
@@ -720,6 +725,7 @@ export default function App(){
               </button>
               {showManage&&<Manage C={C} habits={habits} setHabits={setHabits}/>}
             </>}
+            {personSwitch}
           </div>
         )}
 
@@ -742,6 +748,7 @@ export default function App(){
                   ))
               }
             </div>
+            {personSwitch}
           </div>
         )}
       </div>
@@ -804,7 +811,7 @@ function LoadingView({C,tab}){
       {tab==="sky"
         ? <>
             <div className="sk" style={{height:92,marginBottom:14}}/>
-            <div className="sk" style={{height:42,margin:"18px 0 12px",borderRadius:12}}/>
+            <div className="sk" style={{height:42,margin:"36px 0 14px",borderRadius:12}}/>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
               {[0,1,2,3].map(i=><div key={i} className="sk" style={{height:64,animationDelay:`${i*0.08}s`}}/>)}
             </div>
@@ -1172,7 +1179,7 @@ function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr
 
   return(
     <div style={{background:C.surface,borderRadius:16,
-      padding:"14px 14px",marginBottom:16,
+      padding:"14px 14px",marginBottom:32,
       display:"grid",gridTemplateColumns:"auto 1fr 1fr",columnGap:10,rowGap:10,alignItems:"center"}}>
       <span/>
       {head("지난주")}
