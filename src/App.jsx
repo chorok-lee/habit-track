@@ -154,6 +154,22 @@ async function api(path,opts={}){
   return data;
 }
 
+/* 마지막으로 노션에서 받은 데이터를 이 기기에 저장해 두었다가,
+   다음에 열 때 그걸로 화면을 바로 띄우고 노션 최신 내용으로 조용히 바꿉니다. */
+const CACHE_KEY="hr_cache_v1";
+const readCache=()=>{
+  try{const c=JSON.parse(LS.get(CACHE_KEY)||"null");return c&&Array.isArray(c.hs?.habits)&&c.hs.habits.length&&c.logs?c:null;}
+  catch(e){return null;}
+};
+/* 처음엔 최근 8주만 받아 화면을 띄우고(회고 6주 + 지난주), 1년 치 나머지는 뒤에서 이어 받습니다 */
+const RECENT_WEEKS=8;
+/* fresh가 덮는 날짜 구간(from 이후 / to 이전)은 fresh로 교체, 나머지는 기존 값 유지 */
+const mergeLogs=(prev,fresh,{from,to})=>{
+  const out={};
+  for(const k of Object.keys(prev))if((from&&k<from)||(to&&k>to))out[k]=prev[k];
+  return {...out,...fresh};
+};
+
 /* 노션 기록 배열 → { "YYYY-MM-DD": [습관id, ...] } */
 function logsToMap(rows){
   const out={};
@@ -166,23 +182,29 @@ function logsToMap(rows){
 }
 
 export default function App(){
-  const [habits,setHabits]=useState([]);   // 판정 전에는 비워둠 (예시 데이터 깜빡임 방지)
-  const [logs,setLogs]=useState({});
+  const [cache0]=useState(readCache);      // 지난번 데이터 — 있으면 로딩 없이 바로 보여줌
+  const [habits,setHabits]=useState(()=>cache0?cache0.hs.habits:[]);   // 판정 전에는 비워둠 (예시 데이터 깜빡임 방지)
+  const [logs,setLogs]=useState(()=>cache0?cache0.logs:{});
   const [tab,setTab]=useState("sky");
   const [person,setPerson]=useState(()=>{try{return localStorage.getItem("hr_person")||"me";}catch{return "me";}});
   const [selDate,setSelDate]=useState(toISO(new Date()));
-  const [loaded,setLoaded]=useState(false);
+  const [loaded,setLoaded]=useState(!!cache0);
   const [showManage,setShowManage]=useState(false);
   const [burst,setBurst]=useState(0);
   const [selStar,setSelStar]=useState(null);
   const prevComplete=useRef(-1);
+  const lastToggle=useRef(0);
 
   /* 노션 연결 상태: loading | notion | local */
-  const [sync,setSync]=useState({mode:"loading",error:""});
+  const [sync,setSync]=useState({mode:cache0?"notion":"loading",error:""});
   const [toast,setToast]=useState("");
-  const [meName,setMeName]=useState(DEMO_ME_NAME);        // 노션에서 '나'로 볼 소유자 값
-  const [owners,setOwners]=useState([]);                  // 노션 DB에 등장하는 소유자 목록
+  const [meName,setMeName]=useState(()=>cache0?.hs.me||DEMO_ME_NAME);        // 노션에서 '나'로 볼 소유자 값
+  const [owners,setOwners]=useState(()=>Array.isArray(cache0?.hs.owners)?cache0.hs.owners:[]);   // 노션 DB에 등장하는 소유자 목록
   const [ownerWarn,setOwnerWarn]=useState("");            // 소유자 속성을 못 찾았을 때 안내
+  const [staleWarn,setStaleWarn]=useState("");            // 저장해 둔 데이터를 보여주는 중인데 노션 연결이 실패했을 때
+  const hsRef=useRef(cache0?.hs||null);                   // 캐시에 함께 저장할 습관 응답
+  const olderDone=useRef(false);                          // 1년 치 이전 기록은 세션당 한 번만
+  const pending=useRef(new Map());                        // 노션에 저장 중인 체크 — 새로 받은 데이터에 덮이지 않도록
 
   /* 별똥별 편지 */
   const [letters,setLetters]=useState([]);
@@ -190,14 +212,30 @@ export default function App(){
   const [sending,setSending]=useState(false);
   const [deviceMe,setDeviceMe]=useState(()=>{try{return localStorage.getItem("hr_me")||"";}catch{return "";}});
 
+  /* 저장 중이거나, 이 조회를 시작한 뒤에 한 체크를 새로 받은 기록 위에 다시 얹기
+     (조회 요청이 체크 저장보다 먼저 나갔다면 그 응답엔 체크가 빠져 있으므로) */
+  const withPending=(map,started)=>{
+    for(const [key,v] of pending.current)if(!v.inflight&&v.at<started)pending.current.delete(key);
+    if(!pending.current.size)return map;
+    const out={...map};
+    for(const [key,{on}] of pending.current){
+      const [id,d]=key.split("|");const day=out[d]||[];
+      const next=on?(day.includes(id)?day:[...day,id]):day.filter(x=>x!==id);
+      if(next.length)out[d]=next;else delete out[d];
+    }
+    return out;
+  };
+
   const loadFromNotion=async()=>{
-    const to=toISO(new Date());
-    const from=toISO(addDays(mondayOf(new Date()),-53*7));   // 최근 1년치 한 번에
+    const now=new Date(),to=toISO(now),started=Date.now();
+    const from=toISO(addDays(mondayOf(now),-(RECENT_WEEKS-1)*7));   // 최근 8주만 먼저
     const [hs,ls]=await Promise.all([api("/api/habits"),api(`/api/logs?from=${from}&to=${to}`)]);
     if(!Array.isArray(hs?.habits)||!hs.habits.length)
       throw new Error("노션에서 가져온 습관이 없어요. '활성' 체크가 켜진 습관이 있는지 확인해주세요.");
+    hsRef.current=hs;
     setHabits(hs.habits);
-    setLogs(logsToMap(ls?.logs));
+    /* 직전이 로컬 모드였다면 그 기록은 섞지 않음 */
+    setLogs(prev=>withPending(mergeLogs(sync.mode==="local"?{}:prev,logsToMap(ls?.logs),{from,to}),started));
     setMeName(hs.me||DEMO_ME_NAME);
     setOwners(Array.isArray(hs.owners)?hs.owners:[]);
     setOwnerWarn(
@@ -209,7 +247,19 @@ export default function App(){
             ? `'${hs.me||DEMO_ME_NAME}' 소유의 습관이 없어요. 노션의 소유자 값은 ${hs.owners.join(", ")} 입니다.`
             : ""
     );
-    return {me:hs.me||DEMO_ME_NAME};
+    return {me:hs.me||DEMO_ME_NAME,from};
+  };
+
+  /* 8주보다 오래된 기록(최근 1년)은 화면을 띄운 뒤 뒤에서 받아 합칩니다 */
+  const loadOlder=async(recentFrom)=>{
+    if(olderDone.current)return;
+    const from=toISO(addDays(mondayOf(new Date()),-53*7));
+    const to=toISO(addDays(fromISO(recentFrom),-1)),started=Date.now();
+    try{
+      const ls=await api(`/api/logs?from=${from}&to=${to}`);
+      setLogs(prev=>withPending(mergeLogs(prev,logsToMap(ls?.logs),{from,to}),started));
+      olderDone.current=true;
+    }catch(e){ /* 다음에 앱으로 돌아올 때 다시 시도 */ }
   };
 
   const loadFromLocal=()=>{
@@ -236,9 +286,15 @@ export default function App(){
     try{
       const info=await loadFromNotion();
       setSync({mode:"notion",error:""});
+      setStaleWarn("");
       loadLetters((LS.get("hr_me")||info.me||DEMO_ME_NAME));
+      loadOlder(info.from);
     }
-    catch(e){ loadFromLocal(); setSync({mode:"local",error:e.message||"노션에 연결하지 못했어요."}); }
+    catch(e){
+      /* 이미 노션 데이터(저장해 둔 것 포함)를 보여주는 중이면 그대로 두고 한 줄만 알림 */
+      if(sync.mode==="notion") setStaleWarn("노션에 연결하지 못해 마지막으로 불러온 기록을 보여주고 있어요.");
+      else { loadFromLocal(); setSync({mode:"local",error:e.message||"노션에 연결하지 못했어요."}); }
+    }
     finally{ setLoaded(true); lastLoad.current=Date.now(); }
   };
   const refreshRef=useRef(refresh); refreshRef.current=refresh;
@@ -261,6 +317,11 @@ export default function App(){
   /* 로컬 모드일 때만 브라우저에 저장 (노션 모드는 노션이 원본) */
   useEffect(()=>{if(loaded&&sync.mode==="local")LS.set("hr_habits",JSON.stringify(habits));},[habits,loaded,sync.mode]);
   useEffect(()=>{if(loaded&&sync.mode==="local")LS.set("hr_logs",JSON.stringify(logs));},[logs,loaded,sync.mode]);
+  /* 노션 모드: 다음에 바로 띄울 수 있도록 마지막 데이터를 저장 */
+  useEffect(()=>{
+    if(!loaded||sync.mode!=="notion"||!hsRef.current)return;
+    LS.set(CACHE_KEY,JSON.stringify({hs:hsRef.current,logs,savedAt:Date.now()}));
+  },[habits,logs,loaded,sync.mode]);
   useEffect(()=>{try{localStorage.setItem("hr_person",person);}catch(e){}},[person]);
 
   const today=toISO(new Date());
@@ -274,11 +335,17 @@ export default function App(){
   /* 체크 → 화면 먼저 바꾸고(낙관적 업데이트) 노션에 기록. 실패하면 되돌림 */
   const toggleLog=async(id,d)=>{
     const wasOn=isLogged(id,d);
+    lastToggle.current=Date.now();
     applyToggle(id,d);
     if(sync.mode!=="notion") return;
+    const key=`${id}|${d}`;
+    const mark={on:!wasOn,at:Date.now(),inflight:true};
+    pending.current.set(key,mark);
     try{
       await api("/api/logs",{method:wasOn?"DELETE":"POST",body:JSON.stringify({habitId:id,date:d})});
+      mark.inflight=false;   // 다음 조회가 시작되면 정리됨
     }catch(e){
+      if(pending.current.get(key)===mark)pending.current.delete(key);
       applyToggle(id,d);
       setToast(e.message||"노션에 저장하지 못했어요. 잠시 후 다시 시도해주세요.");
     }
@@ -356,7 +423,8 @@ export default function App(){
 
   useEffect(()=>{
     if(!loaded||selDate!==today){prevComplete.current=myCompleteCount;return;}
-    if(prevComplete.current!==-1&&myCompleteCount>prevComplete.current)setBurst(b=>b+1);
+    /* 직접 체크했을 때만 — 노션에서 새로 받은 데이터로 숫자가 늘어난 건 축하하지 않음 */
+    if(prevComplete.current!==-1&&myCompleteCount>prevComplete.current&&Date.now()-lastToggle.current<3000)setBurst(b=>b+1);
     prevComplete.current=myCompleteCount;
   },[myCompleteCount,loaded,selDate,today]);
   useEffect(()=>{if(!burst)return;const t=setTimeout(()=>setBurst(0),2000);return()=>clearTimeout(t);},[burst]);
@@ -414,7 +482,7 @@ export default function App(){
   /* 평소에는 아무 표시도 하지 않고, 뭔가 어긋났을 때만 한 줄 알립니다. */
   const notice = sync.mode==="local"
     ? (sync.error || "노션에 연결하지 못해 이 기기에만 저장되고 있어요.")
-    : (isNotion && ownerWarn) || "";
+    : (isNotion && (staleWarn || ownerWarn)) || "";
 
   const C={bg:"#0B0C12",surface:"#15171F",surface2:"#1D2029",ink:"#ECEDF2",sub:"#9A9CAA",line:"#282B36",lineSoft:"#22242E"};
 
