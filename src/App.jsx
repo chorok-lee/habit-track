@@ -1204,12 +1204,11 @@ function ChronicleRow({h,C,col,d}){
                   background:c.complete?col:col+"55",
                   boxShadow:c.complete?`0 0 10px ${col}66`:"none"}}/>}
               </div>
-              {/* 주차 레이블 — 좁은 화면에서도 들어가도록 두 줄 */}
-              <div style={{textAlign:"center",marginTop:5,lineHeight:1.25,whiteSpace:"nowrap",
-                fontSize:9.5,color:c.current?col:C.sub,fontWeight:c.current?700:500,
+              {/* 주차 레이블 — 한 줄. 폰 폭에서도 칸 안에 들어가도록 글자 간격을 살짝 좁힘 */}
+              <div style={{textAlign:"center",marginTop:5,whiteSpace:"nowrap",letterSpacing:"-0.04em",
+                fontSize:9,color:c.current?col:C.sub,fontWeight:c.current?700:500,
                 opacity:c.pre?0.4:c.current?1:0.75}}>
-                <div>{wk.m}월</div>
-                <div>{wk.w}주차</div>
+                {wk.m}월 {wk.w}주차
               </div>
             </div>
           );
