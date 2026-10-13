@@ -1,5 +1,5 @@
 /* GET /api/habits
-   →  { habits: [{ id, name, kind, target, emoji, color, owner }], me, owners, ownerProp }
+   →  { habits: [{ id, name, kind, target, emoji, color, owner, start }], me, owners, ownerProp }
 
    노션 Habits DB에서 '활성'이 켜진 습관을 소유자 정보와 함께 가져옵니다. */
 
@@ -37,6 +37,7 @@ export default async function handler(req, res) {
                  || byType(props, ["checkbox"], used);
     let pFreq   = byName(props, ["목표 빈도", "목표빈도", "빈도", "Frequency"], ["select"], used);
     const pColor  = byName(props, ["색상", "Color"], ["select"], used);   // 이름이 맞을 때만
+    const pStart  = byName(props, ["시작일", "시작", "Start", "Start date"], ["date"], used);   // 없으면 페이지 생성일
 
     /* 2단계 — 그래도 못 찾은 필수 항목만 타입으로 추측 (남은 속성 중에서) */
     if (!pTitle) pTitle = byType(props, ["title"], used);
@@ -65,6 +66,9 @@ export default async function handler(req, res) {
         emoji: page.icon?.type === "emoji" ? page.icon.emoji : "",
         color: pColor ? p[pColor]?.select?.name || "" : "",
         owner: pOwner ? readText(p[pOwner]) : "",
+        /* 목표를 시작한 시점 — 회고에서 '시작 전'과 '못 한 주'를 구분하는 데 씁니다.
+           '시작일' 속성이 있으면 그 값, 없으면 노션 페이지를 만든 시각(UTC) */
+        start: (pStart && p[pStart]?.date?.start) || page.created_time || "",
         ...freq,
       };
     });

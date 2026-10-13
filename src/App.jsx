@@ -121,6 +121,11 @@ const WD=["월","화","수","목","금","토","일"];
 /* 한 주는 월요일에 시작해서 일요일 23:59에 닫힙니다 */
 const fmtMD=(iso)=>{const d=fromISO(iso);return `${d.getMonth()+1}/${d.getDate()}`;};
 const weekRangeLabel=(monISO)=>`${fmtMD(monISO)}–${fmtMD(toISO(addDays(fromISO(monISO),6)))}`;
+/* "10월 3주차" — 월요일~일요일 주가 두 달에 걸치면 목요일이 속한 달로 셉니다
+   (달력의 일반적인 주차 규칙). 9/28–10/4 주는 목요일이 10/1이라 10월 1주차. */
+const weekOfMonth=(monISO)=>{const th=addDays(fromISO(monISO),3);return {m:th.getMonth()+1,w:Math.ceil(th.getDate()/7)};};
+/* 노션 시각(UTC, 예: 2026-09-16T05:12:00.000Z) 또는 날짜 → 이 기기 기준 YYYY-MM-DD */
+const localISO=(s)=>{if(!s)return "";if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const d=new Date(s);return isNaN(d)?"":toISO(d);};
 const reduceMotion=typeof window!=="undefined"&&window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches;
 
 /* ── 저장 계층 ───────────────────────────────────────────────
@@ -280,6 +285,20 @@ export default function App(){
   };
   const weekCount=(id,wd=weekDates)=>wd.reduce((n,d)=>n+(isLogged(id,d)?1:0),0);
 
+  /* 습관별 시작일 = 노션 시작일(또는 생성일)과 가장 이른 기록 중 빠른 쪽.
+     생성일보다 앞선 날짜로 기록을 채워 넣었어도 그 기록이 '시작 전'으로 가려지지 않도록. */
+  const firstLog=useMemo(()=>{
+    const out={};
+    for(const d of Object.keys(logs).sort())for(const id of logs[d])if(!out[id])out[id]=d;
+    return out;
+  },[logs]);
+  const startOf=(h)=>{
+    const a=localISO(h.start),b=firstLog[h.id]||"";
+    return a&&b?(a<b?a:b):a;   // 시작일을 모르면(로컬 모드 등) 비워둬서 가리지 않음
+  };
+  /* 그 주(월~일)가 끝나기 전에 시작한 습관인가 */
+  const startedBy=(h,monISO)=>{const s=startOf(h);return !s||s<=toISO(addDays(fromISO(monISO),6));};
+
   /* ── 소유자별 분리 ──────────────────────────────────────────
      노션 모드: 습관의 '소유자' 값으로 나/상대를 나눔
      로컬 모드: 소유자 정보가 없으므로 전부 내 것 + 상대는 예시 데이터
@@ -357,10 +376,12 @@ export default function App(){
     const cells=Array.from({length:WEEKS},(_,i)=>{
       const mon=addDays(curMon,-(WEEKS-1-i)*7);
       const done=weekDatesFrom(mon).reduce((n,d)=>n+(isLogged(h.id,d)?1:0),0);
-      return {mon:toISO(mon),done,target:t,ratio:Math.min(1,done/t),complete:done>=t,current:i===WEEKS-1};
+      return {mon:toISO(mon),done,target:t,ratio:Math.min(1,done/t),complete:done>=t,current:i===WEEKS-1,
+        pre:!startedBy(h,toISO(mon))};   // 목표를 시작하기 전의 주 — '못 한 주'와 다르게 그립니다
     });
-    /* 연속·최고 기록 같은 숫자는 막대 모양으로 읽히므로 따로 세지 않습니다 */
-    return {cells,recent:cells.filter(c=>c.complete).length,window:WEEKS};
+    /* 연속·최고 기록 같은 숫자는 막대 모양으로 읽히므로 따로 세지 않습니다.
+       ✦ 분모도 시작한 뒤의 주만 셉니다 (2주 전에 시작했으면 ✦ 1/2) */
+    return {cells,recent:cells.filter(c=>c.complete).length,window:cells.filter(c=>!c.pre).length};
   };
 
   /* 특정 주(월~일)의 별 상태 — 지난주 별자리를 다시 그릴 때 씁니다 */
@@ -412,7 +433,19 @@ export default function App(){
         .conf{position:absolute;left:50%;top:44%;width:6px;height:6px;opacity:1;border-radius:50%;animation:cburst 1.4s ease-out forwards}
         @keyframes cburst{to{transform:translate(var(--tx),var(--ty));opacity:0}}
         .glow-pulse{animation:gp 2.4s ease-in-out infinite}@keyframes gp{0%,100%{opacity:.7}50%{opacity:1}}
-        @media(prefers-reduced-motion:reduce){.tap,.btn,.fade,.conf,.glow-pulse{transition:none;animation:none}}
+        /* ── 로딩: 별자리가 이어지는 애니메이션 + 실제 화면과 같은 자리의 뼈대 ── */
+        .sk{border-radius:16px;background:linear-gradient(90deg,#15171F 0%,#1C1F28 45%,#15171F 90%);
+          background-size:220% 100%;animation:sk 1.5s ease-in-out infinite}
+        @keyframes sk{from{background-position:110% 0}to{background-position:-110% 0}}
+        .ld-line{stroke-dasharray:1;stroke-dashoffset:1;animation:ldDraw 2.8s cubic-bezier(.4,0,.2,1) infinite}
+        @keyframes ldDraw{0%{stroke-dashoffset:1;opacity:.9}45%,78%{stroke-dashoffset:0;opacity:.9}100%{stroke-dashoffset:0;opacity:0}}
+        .ld-star{opacity:.15;animation:ldStar 2.8s ease-in-out infinite}
+        @keyframes ldStar{0%{opacity:.15}20%,78%{opacity:1}100%{opacity:.15}}
+        .ld-bg{animation:ldTw 3.2s ease-in-out infinite}
+        @keyframes ldTw{0%,100%{opacity:.25}50%{opacity:.9}}
+        .ld-msg{animation:fade .5s ease}
+        @media(prefers-reduced-motion:reduce){.tap,.btn,.fade,.conf,.glow-pulse{transition:none;animation:none}
+          .sk,.ld-bg,.ld-msg{animation:none}.ld-line{animation:none;stroke-dashoffset:0;opacity:.6}.ld-star{animation:none;opacity:1}}
         .wrap{max-width:600px;margin:0 auto;padding:0 18px 96px}
         .navbar{position:sticky;top:0;z-index:10;background:#0B0C12}
         input.txt,select{font-family:inherit}
@@ -525,12 +558,7 @@ export default function App(){
           ))}
         </nav>
 
-        {booting&&(
-          <div className="fade">
-            <div className="sky" style={{marginBottom:16,aspectRatio:"560/296"}}/>
-            <p style={{textAlign:"center",fontSize:12.5,color:C.sub,margin:"18px 0 0"}}>별을 불러오는 중이에요</p>
-          </div>
-        )}
+        {booting&&<LoadingView C={C} tab={tab}/>}
 
         {!booting&&tab==="sky"&&(
           <div className="fade">
@@ -545,7 +573,10 @@ export default function App(){
             </div>
 
             <ProgressArea C={C} rows={[{who:meName,color:GREEN,items:meProg},{who:friendName,color:VIOLET,items:frProg}]}/>
-            {person==="me" && <CheerCard C={C} stars={frStars} friendName={friendName}/>}
+            {/* 지금 보고 있지 않은 쪽의 달성 소식 — 초록 화면엔 소운, 소운 화면엔 초록 */}
+            {person==="me"
+              ? <CheerCard C={C} stars={frStars} name={friendName} color={VIOLET}/>
+              : <CheerCard C={C} stars={myStars} name={meName} color={GREEN}/>}
 
             {/* 날짜 스테퍼 */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"18px 0 12px"}}>
@@ -634,8 +665,8 @@ export default function App(){
             {/* 지난주 → 이번 주 별자리 변화 (작은 기록 카드) */}
             <WeekShift C={C} prevMonISO={prevMonISO} curMonISO={curMonISO}
               meName={meName} friendName={friendName}
-              prevMe={starsAtWeek(myHabits,prevMonISO)} curMe={myStars}
-              prevFr={isNotion?starsAtWeek(friendHabits,prevMonISO):[]}
+              prevMe={starsAtWeek(myHabits.filter(h=>startedBy(h,prevMonISO)),prevMonISO)} curMe={myStars}
+              prevFr={isNotion?starsAtWeek(friendHabits.filter(h=>startedBy(h,prevMonISO)),prevMonISO):[]}
               curFr={frStars}/>
 
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -662,6 +693,62 @@ export default function App(){
           onPick={(l)=>setModal({type:"read",letter:l})} onClose={()=>setModal(null)}
           onOwner={setOwnerOfDevice}/>}
       {toast&&<Toast C={C} text={toast}/>}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   로딩 화면
+   빈 하늘 아래에 글자만 있던 것을 → 하늘 안에서 별자리가 이어지는 애니메이션으로.
+   아래에는 실제 화면과 같은 자리·크기의 뼈대를 깔아서, 데이터가 오면
+   화면이 튀지 않고 그 자리에 그대로 채워집니다.
+   오래 걸리면 문구를 바꿔 멈춘 게 아니라는 걸 알려줍니다.
+══════════════════════════════════════════════════════════ */
+const LD_STARS=[[214,118],[252,92],[292,120],[330,96],[352,140],[300,166],[248,160]];
+function LoadingView({C,tab}){
+  const [slow,setSlow]=useState(false);
+  useEffect(()=>{const t=setTimeout(()=>setSlow(true),3500);return()=>clearTimeout(t);},[]);
+  const bg=useMemo(()=>Array.from({length:34},(_,i)=>{
+    const a=Math.sin(i*12.9898+1)*43758.5453,b=Math.sin(i*78.233+2)*43758.5453;
+    const rx=a-Math.floor(a),ry=b-Math.floor(b);
+    return {x:(rx*560).toFixed(1),y:(ry*296).toFixed(1),r:(0.5+rx*0.8).toFixed(2),d:(ry*3).toFixed(2)};
+  }),[]);
+  const n=LD_STARS.length, step=2.8/(n+2);   // 별이 하나씩 이어지는 간격
+  return(
+    <div className="fade" role="status" aria-live="polite">
+      <div className="sky" style={{marginBottom:16}}>
+        <svg viewBox="0 0 560 296" width="100%" style={{display:"block"}} aria-hidden="true">
+          {bg.map((s,i)=><circle key={i} className="ld-bg" cx={s.x} cy={s.y} r={s.r} fill="#b0b8d8"
+            style={{animationDelay:`${s.d}s`}}/>)}
+          {LD_STARS.slice(1).map((p,i)=>{
+            const a=LD_STARS[i];
+            return <line key={i} className="ld-line" pathLength="1" x1={a[0]} y1={a[1]} x2={p[0]} y2={p[1]}
+              stroke={GREEN} strokeWidth="1.2" strokeLinecap="round" style={{animationDelay:`${i*step}s`}}/>;
+          })}
+          {LD_STARS.map((p,i)=>(
+            <g key={i} className="ld-star" style={{animationDelay:`${Math.max(0,i-0.6)*step}s`}}>
+              <circle cx={p[0]} cy={p[1]} r="7" fill={GREEN} opacity=".18"/>
+              <circle cx={p[0]} cy={p[1]} r="2.6" fill="#fff"/>
+            </g>
+          ))}
+          <text key={slow?"s":"f"} className="ld-msg" x="280" y="236" textAnchor="middle" fontSize="13" fill={C.sub}
+            style={{fontFamily:"'Pretendard',sans-serif"}}>
+            {slow?"노션에서 기록을 가져오고 있어요":"별을 불러오는 중이에요"}
+          </text>
+        </svg>
+      </div>
+      {/* 실제 화면 자리에 맞춘 뼈대 */}
+      {tab==="sky"
+        ? <>
+            <div className="sk" style={{height:92,marginBottom:14}}/>
+            <div className="sk" style={{height:42,margin:"18px 0 12px",borderRadius:12}}/>
+            <div style={{display:"flex",flexDirection:"column",gap:9}}>
+              {[0,1,2,3].map(i=><div key={i} className="sk" style={{height:64,animationDelay:`${i*0.08}s`}}/>)}
+            </div>
+          </>
+        : <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {[0,1,2].map(i=><div key={i} className="sk" style={{height:118,animationDelay:`${i*0.08}s`}}/>)}
+          </div>}
     </div>
   );
 }
@@ -985,10 +1072,10 @@ function ProgressArea({C,rows}){
   );
 }
 
-/* ── 상대가 이번 주에 채운 목표 알림 ──
+/* ── 상대가 이번 주에 채운 목표 알림 (양쪽 화면 모두) ──
    반응 이모지 버튼은 뺐습니다 — 어디에도 전달되지 않는 장식이었고,
    진짜 응원은 아래 '별똥별 보내기'로 보냅니다. */
-function CheerCard({C,stars,friendName}){
+function CheerCard({C,stars,name,color}){
   const done=(stars||[]).filter(s=>s.complete);
   if(!done.length) return null;
   return(
@@ -998,7 +1085,7 @@ function CheerCard({C,stars,friendName}){
         {done.slice(0,3).map(f=><span key={f.id} style={{fontSize:14}}>{f.emoji}</span>)}
       </span>
       <div style={{fontSize:12.5,lineHeight:1.5,color:C.sub,wordBreak:"keep-all"}}>
-        {subjName(friendName||DEMO_FRIEND_NAME)} 이번 주에 <b style={{color:VIOLET,fontWeight:700}}>{done.length}개</b> 목표를 채웠어요
+        {subjName(name)} 이번 주에 <b style={{color,fontWeight:700}}>{done.length}개</b> 목표를 채웠어요
       </div>
     </div>
   );
@@ -1095,27 +1182,38 @@ function ChronicleRow({h,C,col,d}){
           <span style={{fontSize:16,flex:"0 0 auto"}}>{emojiOf(h)}</span>
           <span style={{fontSize:14,fontWeight:700,wordBreak:"keep-all"}}>{h.name}</span>
         </div>
-        <span className="mono" style={{fontSize:11,flex:"0 0 auto",fontWeight:700,
-          color:d.recent>0?col:C.sub,opacity:d.recent>0?1:.6}}>✦ {d.recent}/{d.window}</span>
+        {d.window>0&&<span className="mono" style={{fontSize:11,flex:"0 0 auto",fontWeight:700,
+          color:d.recent>0?col:C.sub,opacity:d.recent>0?1:.6}}>✦ {d.recent}/{d.window}</span>}
       </div>
 
-      <div style={{display:"flex",gap:5,alignItems:"flex-end"}}>
-        {d.cells.map((c,i)=>(
-          <div key={i} title={`${weekRangeLabel(c.mon)} ${c.done}/${c.target}`}
-            style={{flex:1,minWidth:0,height:H,borderRadius:6,background:C.lineSoft,
-              position:"relative",overflow:"hidden",
-              outline:c.current?`1.5px dashed ${col}99`:"none",outlineOffset:-1}}>
-            <div style={{position:"absolute",left:0,right:0,bottom:0,
-              height:`${Math.max(c.ratio*100, c.ratio>0?12:0)}%`,
-              background:c.complete?col:col+"55",
-              boxShadow:c.complete?`0 0 10px ${col}66`:"none"}}/>
-          </div>
-        ))}
-      </div>
-
-      <div style={{display:"flex",justifyContent:"space-between",marginTop:5}}>
-        <span className="mono" style={{fontSize:9,color:C.sub,opacity:.6}}>{fmtMD(d.cells[0].mon)}</span>
-        <span className="mono" style={{fontSize:9,color:C.sub,opacity:.6}}>이번 주</span>
+      <div style={{display:"flex",gap:5,alignItems:"flex-start"}}>
+        {d.cells.map((c,i)=>{
+          const wk=weekOfMonth(c.mon);
+          return(
+            <div key={i} style={{flex:1,minWidth:0}}>
+              {/* 시작 전의 주는 빗금 + 흐리게 — 비어 있는 '못 한 주'와 구분됩니다 */}
+              <div title={`${weekRangeLabel(c.mon)} ${c.pre?"시작 전":`${c.done}/${c.target}`}`}
+                style={{height:H,borderRadius:6,position:"relative",overflow:"hidden",
+                  background:c.pre
+                    ?"repeating-linear-gradient(135deg,#ffffff0a 0 2px,transparent 2px 6px)"
+                    :C.lineSoft,
+                  opacity:c.pre?0.5:1,
+                  outline:c.current?`1.5px dashed ${col}99`:"none",outlineOffset:-1}}>
+                {!c.pre&&<div style={{position:"absolute",left:0,right:0,bottom:0,
+                  height:`${Math.max(c.ratio*100, c.ratio>0?12:0)}%`,
+                  background:c.complete?col:col+"55",
+                  boxShadow:c.complete?`0 0 10px ${col}66`:"none"}}/>}
+              </div>
+              {/* 주차 레이블 — 좁은 화면에서도 들어가도록 두 줄 */}
+              <div style={{textAlign:"center",marginTop:5,lineHeight:1.25,whiteSpace:"nowrap",
+                fontSize:9.5,color:c.current?col:C.sub,fontWeight:c.current?700:500,
+                opacity:c.pre?0.4:c.current?1:0.75}}>
+                <div>{wk.m}월</div>
+                <div>{wk.w}주차</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
