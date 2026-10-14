@@ -147,15 +147,15 @@ function ConstLines({seq,scale=1,dim=1}){
   });
 }
 
-/* 앱 전체 배경 — 남색→보라 밤하늘 + 반짝이는 별 (스플래시 이후에도 유지) */
-function NightBG(){
+/* 밤하늘 별 — 스플래시에선 남색→보라 하늘째로, 본 화면에선 거의 검은 배경 위 별만 은은하게 */
+function NightBG({vivid=false}){
   const stars=useMemo(()=>Array.from({length:90},(_,i)=>({x:rnd(i,1)*100,y:rnd(i,2)*100,r:.5+rnd(i,3)*1.1,o:.25+rnd(i,4)*.6,d:rnd(i,5)*6})),[]);
   return(
     <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
-      background:"linear-gradient(180deg,#03040B 0%,#070820 45%,#120F3A 80%,#1C1650 100%)"}}>
+      background:vivid?"linear-gradient(180deg,#03040B 0%,#070820 45%,#120F3A 80%,#1C1650 100%)":"transparent"}}>
       <svg width="100%" height="100%" style={{position:"absolute",inset:0}}>
         {stars.map((t,i)=><circle key={i} className={i%3===0&&!reduceMotion?"twk":""} cx={`${t.x}%`} cy={`${t.y}%`} r={t.r}
-          fill="#fff" opacity={t.o} style={{animationDelay:`${t.d}s`}}/>)}
+          fill="#fff" opacity={vivid?t.o:t.o*.55} style={{animationDelay:`${t.d}s`}}/>)}
       </svg>
     </div>
   );
@@ -595,13 +595,13 @@ export default function App(){
   const C={bg:"transparent",surface:"rgba(17,19,46,.62)",surface2:"rgba(255,255,255,.08)",ink:"#EEEDF7",sub:"#A3A2BD",line:"rgba(255,255,255,.12)",lineSoft:"rgba(255,255,255,.08)"};
 
   return (
-    <div style={{background:"transparent",minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
+    <div style={{background:"radial-gradient(120% 60% at 50% 0%,rgba(40,36,90,.22) 0%,rgba(0,0,0,0) 60%),linear-gradient(180deg,#040409 0%,#06060E 55%,#0A0918 100%)",minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
-        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
         *{box-sizing:border-box}
-        html,body{max-width:100%;overflow-x:clip;background:#0B0A26}   /* 화면 끝을 넘겨 당겨도 밤하늘 색 */
-        .mono{font-family:'Space Mono',monospace;font-variant-numeric:tabular-nums}
+        html,body{max-width:100%;overflow-x:clip;background:#0A0918}   /* 화면 끝을 넘겨 당겨도 같은 색 */
+        .mono{font-variant-numeric:tabular-nums}   /* 폰트는 Pretendard 하나 — 숫자만 폭을 맞춤 */
+        button,input,textarea,select{font-family:inherit}
         .tap{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;transition:transform .18s cubic-bezier(.34,1.56,.64,1),border-color .2s,background .25s,box-shadow .25s}
         .tap:active{transform:scale(.96)}
         .row-tap{-webkit-tap-highlight-color:transparent;user-select:none}
@@ -716,12 +716,12 @@ export default function App(){
         <header className="navbar" style={{paddingTop:16,paddingBottom:16,marginBottom:8}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center"}}>
             <span/>
-            <div role="tablist" style={{...BTN_FILL,display:"flex",gap:3,padding:3,cursor:"default"}}>
+            <div role="tablist" style={{...GLASS,borderRadius:999,display:"flex",gap:3,padding:3}}>
               {[["sky","오늘"],["review","회고"]].map(([k,l])=>(
                 <button key={k} role="tab" aria-selected={tab===k} className="btn" onClick={()=>setTab(k)}
                   style={{padding:"7px 20px",borderRadius:999,border:"none",fontSize:15,fontWeight:700,
-                    background:tab===k?"rgba(255,224,138,.16)":"transparent",color:tab===k?GREEN:C.sub,
-                    boxShadow:tab===k?"0 0 16px rgba(255,224,138,.28),inset 0 0 0 1px rgba(255,224,138,.5)":"none",
+                    background:tab===k?"rgba(255,224,138,.18)":"transparent",color:tab===k?GREEN:C.sub,
+                    boxShadow:tab===k?"0 0 16px rgba(255,224,138,.18)":"none",
                     transition:"background .18s,color .18s,box-shadow .18s"}}>{l}</button>
               ))}
             </div>
@@ -779,14 +779,14 @@ export default function App(){
                 : sortHabits(FRIEND_HABITS).map(h=>{const tgt=tgtOf(h),d=h.done>=tgt;
                     return {h,on:d,sub:d?"완성":`${h.done}/${tgt}`,done:d,onTap:null};});
               if(!rows.length) return isNotion&&
-                <div style={{background:C.surface,borderRadius:20,padding:"18px 16px",
+                <div style={{...GLASS,borderRadius:20,padding:"18px 16px",
                   fontSize:14,color:C.sub,lineHeight:1.6,textAlign:"center"}}>
                   소유자가 <b style={{color:C.ink,fontWeight:600}}>{person==="me"?meName:friendName}</b>인 습관이 노션에 없어요.
                   {owners.length>0&&<><br/><span className="mono" style={{fontSize:12}}>DB에 있는 소유자: {owners.join(" · ")}</span></>}
                 </div>;
               return(
                 /* 항목 사이는 구분선 없이 여백만. 체크한 항목은 행 자체에 배경이 깔려 한눈에 구분 */
-                <div style={{background:C.surface,borderRadius:20,padding:6,display:"flex",flexDirection:"column",gap:4}}>
+                <div style={{...GLASS,borderRadius:20,padding:6,display:"flex",flexDirection:"column",gap:4}}>
                   {rows.map((r,i)=>(
                     <div key={r.h.id} className={r.onTap?"row-tap":""} onClick={r.onTap||undefined}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 10px",
@@ -931,7 +931,7 @@ function Splash({out,name,color}){
   return(
     <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:200,
       opacity:out?0:1,transition:reduceMotion?"none":"opacity .5s ease",pointerEvents:out?"none":"auto"}}>
-      <NightBG/>
+      <NightBG vivid/>
       <div style={{position:"absolute",left:28,right:28,bottom:"16%",fontSize:32,fontWeight:800,lineHeight:1.3,letterSpacing:"-0.02em"}}>
         <div className="sp-line" style={{animationDelay:".25s",color:"#F3F2FA"}}>오늘도 반가워,</div>
         <div className="sp-line" style={{animationDelay:".95s",color,textShadow:`0 0 24px ${color}66`}}>{callName(name)}</div>
@@ -1236,7 +1236,7 @@ function BurstEffect({cx,cy,color}){
 /* ── ProgressArea ── */
 function ProgressArea({C,rows}){
   return(
-    <div style={{background:C.surface,borderRadius:16,padding:"18px 16px",marginBottom:12,display:"flex",flexDirection:"column",gap:18,overflow:"hidden"}}>
+    <div style={{...GLASS,borderRadius:16,padding:"18px 16px",marginBottom:12,display:"flex",flexDirection:"column",gap:18,overflow:"hidden"}}>
       {rows.map((row,ri)=>(
         <div key={ri} style={{display:"flex",alignItems:"flex-start",gap:12,minWidth:0}}>
           {/* 이름을 그대로 적습니다 — 보는 사람에 따라 '나'가 달라지므로 */}
@@ -1267,7 +1267,7 @@ function CheerCard({C,stars,name,onPraise}){
   const n=(stars||[]).filter(s=>s.complete).length;
   if(!n) return null;
   return(
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,background:C.surface,
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,...GLASS,
       borderRadius:16,padding:"18px 16px",marginBottom:12}}>
       <div style={{fontSize:14,lineHeight:1.5,color:C.ink,wordBreak:"keep-all"}}>
         {subjName(name)} 습관 {n}개를 쭉 지켰어요
@@ -1299,7 +1299,7 @@ function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr
 
   /* '오늘' 탭의 밤하늘 패널과 같은 비율(560:296)·같은 옅은 외곽선 — 두 탭 첫 화면의 높이가 맞도록 */
   return(
-    <div style={{background:C.surface,borderRadius:20,border:"1px solid rgba(255,255,255,.07)",
+    <div style={{...GLASS,borderRadius:20,
       aspectRatio:"560/296",padding:"18px 16px",marginBottom:60,
       display:"grid",gridTemplateColumns:"auto 1fr 1fr",gridTemplateRows:`auto repeat(${rows.length},minmax(0,1fr))`,
       columnGap:10,rowGap:8,alignItems:"center"}}>
@@ -1378,7 +1378,7 @@ function ChronicleRow({h,C,col,d}){
   const starts=months.map((m,i)=>i>0&&m!==months[i-1]);
   const showMonth=months.map((m,i)=>i===0?!starts[1]:starts[i]);
   return(
-    <div style={{background:C.surface,borderRadius:16,padding:"18px 16px"}}>
+    <div style={{...GLASS,borderRadius:16,padding:"18px 16px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:16}}>
         <span style={{fontSize:16,fontWeight:700,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</span>
         {/* 가장 최근의 연속 달성 — 막대 안 대신 제목 오른쪽에 */}
@@ -1428,7 +1428,7 @@ function ChronicleRow({h,C,col,d}){
 function FriendChronicleRow({h,C,col}){
   const tgt=tgtOf(h);
   return(
-    <div style={{background:C.surface,borderRadius:16,padding:"18px 16px"}}>
+    <div style={{...GLASS,borderRadius:16,padding:"18px 16px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",gap:9}}><span className="emo" style={{fontSize:17}}>{emojiOf(h)}</span><span style={{fontSize:14.5,fontWeight:700}}>{h.name}</span></div>
         <span className="mono" style={{fontSize:12,color:h.done>=tgt?col:C.sub,fontWeight:700}}>{h.done}/{tgt}{h.done>=tgt?" ✦":""}</span>
@@ -1444,7 +1444,7 @@ function Manage({C,habits,setHabits}){
   const [name,setName]=useState(""),[emoji,setEmoji]=useState("⭐"),[kind,setKind]=useState("daily"),[target,setTarget]=useState(3);
   const add=()=>{if(!name.trim())return;setHabits(p=>[...p,{id:"h"+Date.now(),name:name.trim(),emoji:emoji||"⭐",kind,target:kind==="daily"?7:Math.max(1,Math.min(6,target))}]);setName("");setEmoji("⭐");};
   return(
-    <div className="fade" style={{background:C.surface,borderRadius:16,padding:"18px 16px",marginTop:8}}>
+    <div className="fade" style={{...GLASS,borderRadius:16,padding:"18px 16px",marginTop:8}}>
       {habits.map(h=>(
         <div key={h.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
           <span style={{display:"flex",alignItems:"center",gap:9,fontSize:14}}><span className="emo" style={{fontSize:16}}>{emojiOf(h)}</span>{h.name}<span className="mono" style={{color:C.sub,fontSize:11}}>{h.kind==="daily"?"매일":`주${h.target}`}</span></span>
@@ -1462,13 +1462,16 @@ function Manage({C,habits,setHabits}){
   );
 }
 /* 버튼 체계 — 콘텐츠(면으로 채운 둥근 사각형 카드)와 모양부터 다르게 보이도록 버튼은 전부 알약형.
-   primary: 별빛 옐로로 빛나는 버튼 (화면당 하나), secondary: 글래스 */
+   primary: 별빛 옐로로 빛나는 버튼 (화면당 하나), secondary: 옐로 반투명 채움 + 옐로 글자 */
 const BTN_PRIMARY={background:"linear-gradient(180deg,#FFF0BE 0%,#FFE08A 100%)",color:"#2B2000",border:"none",borderRadius:999,fontWeight:700,fontFamily:"inherit",cursor:"pointer",
   boxShadow:"0 0 24px rgba(255,224,138,.45),inset 0 1px 0 rgba(255,255,255,.7)"};
 /* secondary 채움색 = 상단 오늘/회고 토글의 선택 안 된 칸(트랙) 색 */
-const FILL_2="rgba(255,255,255,.07)";
-/* secondary — 글래스: 반투명 + 흐림 + 아주 옅은 테두리 */
-const BTN_FILL={background:FILL_2,color:"#EEEDF7",border:"1px solid rgba(255,255,255,.14)",borderRadius:999,fontWeight:600,fontFamily:"inherit",cursor:"pointer",
-  WebkitBackdropFilter:"blur(12px)",backdropFilter:"blur(12px)",boxShadow:"inset 0 1px 0 rgba(255,255,255,.08)"};
+/* 카드 — 글래스: 아주 옅은 반투명 면 + 흐림 + 가는 빛 테두리 */
+const GLASS={background:"rgba(255,255,255,.045)",border:"1px solid rgba(255,255,255,.08)",
+  WebkitBackdropFilter:"blur(16px)",backdropFilter:"blur(16px)",boxShadow:"inset 0 1px 0 rgba(255,255,255,.05)"};
+const FILL_2="rgba(255,224,138,.14)";
+/* secondary — 옐로 반투명 채움 + 옐로 글자 (선 없음) */
+const BTN_FILL={background:FILL_2,color:"#FFE08A",border:"none",borderRadius:999,fontWeight:600,fontFamily:"inherit",cursor:"pointer",
+  WebkitBackdropFilter:"blur(12px)",backdropFilter:"blur(12px)"};
 function arrowBtn(C){return{...BTN_FILL,width:32,height:32,fontSize:14,lineHeight:1,padding:0};}
 function inp(C,extra){return{border:`1px solid ${C.line}`,borderRadius:9,padding:"9px 11px",fontSize:14,background:C.surface2,color:C.ink,fontFamily:"inherit",outline:"none",...extra};}
