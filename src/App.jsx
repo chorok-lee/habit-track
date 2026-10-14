@@ -595,7 +595,7 @@ export default function App(){
   const C={bg:"transparent",surface:"rgba(17,19,46,.62)",surface2:"rgba(255,255,255,.08)",ink:"#EEEDF7",sub:"#A3A2BD",line:"rgba(255,255,255,.12)",lineSoft:"rgba(255,255,255,.08)"};
 
   return (
-    <div style={{background:"radial-gradient(120% 60% at 50% 0%,rgba(40,36,90,.22) 0%,rgba(0,0,0,0) 60%),linear-gradient(180deg,#040409 0%,#06060E 55%,#0A0918 100%)",minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
+    <div style={{...accentVars(person==="me"?GREEN:VIOLET),background:"radial-gradient(120% 60% at 50% 0%,rgba(40,36,90,.22) 0%,rgba(0,0,0,0) 60%),linear-gradient(180deg,#040409 0%,#06060E 55%,#0A0918 100%)",minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
         *{box-sizing:border-box}
@@ -673,13 +673,13 @@ export default function App(){
         @keyframes ltCard{to{opacity:1;transform:scale(1)}}
         .lt-now{animation-delay:0ms!important}
         /* 편지 카드 — 글래스(반투명·블러) 대신 플랫: 불투명한 단색 면, 그림자 없음 */
-        .glass{background:rgba(20,21,52,.97);border-radius:20px;position:relative}
+        .glass{background:rgba(24,24,32,.94);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-radius:20px;position:relative}
         .lt-card{padding:18px 16px;min-height:240px;display:flex;flex-direction:column}
         .lt-from{font-size:13px;color:#9A9CAA;text-align:center;margin:0}
         .lt-msg{font-size:17px;font-weight:700;line-height:1.78;color:#F3F5FC;text-align:center;margin:auto 0;
           white-space:pre-line;word-break:keep-all}
         .lt-acts{display:flex;flex-direction:column;align-items:center;gap:15px;margin-top:22px}
-        .lt-a1{background:linear-gradient(180deg,#FFF0BE,#FFE08A);color:#2B2000;box-shadow:0 0 24px rgba(255,224,138,.45);font-size:15px;font-weight:700;padding:13px 40px;border:none;
+        .lt-a1{background:var(--acc);color:var(--on-acc);box-shadow:0 0 22px rgba(var(--acc-rgb),.3);font-size:15px;font-weight:700;padding:13px 40px;border:none;
           border-radius:999px;cursor:pointer;font-family:inherit}
         .lt-a2{background:none;border:none;font-size:14px;color:#9A9CAA;cursor:pointer;
           padding:4px 8px;font-family:inherit}
@@ -725,16 +725,16 @@ export default function App(){
               {[["sky","오늘"],["review","회고"]].map(([k,l])=>(
                 <button key={k} role="tab" aria-selected={tab===k} className="btn" onClick={()=>setTab(k)}
                   style={{padding:"7px 20px",borderRadius:999,border:"none",fontSize:15,fontWeight:700,
-                    background:tab===k?"rgba(255,224,138,.18)":"transparent",color:tab===k?GREEN:C.sub,
-                    boxShadow:tab===k?"0 0 16px rgba(255,224,138,.18)":"none",
+                    background:tab===k?"rgba(var(--acc-rgb),.18)":"transparent",color:tab===k?"var(--acc)":C.sub,
+                    boxShadow:tab===k?"0 0 16px rgba(var(--acc-rgb),.18)":"none",
                     transition:"background .18s,color .18s,box-shadow .18s"}}>{l}</button>
               ))}
             </div>
             <div style={{justifySelf:"end"}}>
               {lettersOn&&
                 <button className="btn" onClick={openBox} aria-label="받은 편지"
-                  style={{...BTN_FILL,position:"relative",width:38,height:38,fontSize:15,lineHeight:1,padding:0}}>
-                  ✦
+                  style={{...BTN_FILL,position:"relative",width:40,height:40,lineHeight:1,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <StarIcon size={22}/>
                   {unread.length>0&&<span style={{position:"absolute",top:5,right:5,width:7,height:7,
                     borderRadius:"50%",background:"#FFFFFF"}}/>}
                 </button>}
@@ -795,11 +795,11 @@ export default function App(){
                   {rows.map((r,i)=>(
                     <div key={r.h.id} className={r.onTap?"row-tap":""} onClick={r.onTap||undefined}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 10px",
-                        borderRadius:14,background:r.on?"rgba(255,224,138,.07)":"transparent",transition:"background .15s",
+                        borderRadius:14,background:r.on?"rgba(var(--acc-rgb),.07)":"transparent",transition:"background .15s",
                         cursor:r.onTap?"pointer":"default"}}>
                       <div style={{display:"flex",alignItems:"center",gap:14,minWidth:0}}>
                         {/* 이모지마다 크기감이 달라 보이지 않도록 같은 원 안에 작게 */}
-                        <span style={{width:40,height:40,borderRadius:"50%",background:r.on?"rgba(255,224,138,.12)":"rgba(255,255,255,.06)",flex:"0 0 auto",
+                        <span style={{width:40,height:40,borderRadius:"50%",background:r.on?"rgba(var(--acc-rgb),.12)":"rgba(255,255,255,.06)",flex:"0 0 auto",
                           display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,lineHeight:1}}><span className="emo">{emojiOf(r.h)}</span></span>
                         <div style={{minWidth:0}}>
                           <div style={{fontSize:15,fontWeight:600,wordBreak:"keep-all"}}>{r.h.name}</div>
@@ -807,8 +807,8 @@ export default function App(){
                         </div>
                       </div>
                       <span style={{width:28,height:28,borderRadius:9,flex:"0 0 auto",border:r.on?"none":"2px solid rgba(255,255,255,.2)",
-                        background:r.on?GREEN:"transparent",boxShadow:r.on?"0 0 14px rgba(255,224,138,.6)":"none",display:"flex",alignItems:"center",justifyContent:"center",
-                        color:"#0B0C12",fontSize:15,fontWeight:800,transition:"background .15s"}}>{r.on?"✓":""}</span>
+                        background:r.on?"var(--acc)":"transparent",boxShadow:r.on?"0 0 14px rgba(var(--acc-rgb),.55)":"none",display:"flex",alignItems:"center",justifyContent:"center",
+                        color:"var(--on-acc)",fontSize:15,fontWeight:800,transition:"background .15s"}}>{r.on?"✓":""}</span>
                     </div>
                   ))}
                 </div>
@@ -816,9 +816,9 @@ export default function App(){
             })()}
 
             {lettersOn&&
-              <button className="btn" onClick={()=>compose(person==="me"?partner:friendName)}
+              <button className="btn" onClick={()=>person==="me"?compose(partner):compose(meName,friendName)}
                 style={{...BTN_PRIMARY,width:"100%",marginTop:12,padding:"15px 0",fontSize:15}}>
-                <span style={{marginRight:7}}>✦</span>{(person==="me"?partner:friendName)}에게 별똥별 보내기
+                <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8}}><StarIcon size={18}/>{(person==="me"?partner:meName)}에게 별똥별 보내기</span>
               </button>}
 
             {/* 노션 모드에서는 목록을 노션에서 관리하므로, 눌러도 안내만 나오던 버튼을 감춥니다 */}
@@ -930,16 +930,18 @@ function LoadingView({C,tab}){
   );
 }
 
-/* 스플래시 — 밤하늘 위에 인사가 한 줄씩 떠오름: "오늘도 반가워," → "소운아" */
+/* 스플래시 — 밤하늘 위에 인사가 한 줄씩 떠오름: "소운아" → "오늘도 고생했어" (문구는 5개 중 하나) */
 const callName=(n)=>{const c=n.charCodeAt(n.length-1);return c>=0xAC00&&c<=0xD7A3&&(c-0xAC00)%28!==0?`${n}아`:`${n}야`;};
+const SPLASH_LINES=["오늘도 고생했어","오늘도 반가워","천천히 가도 괜찮아","오늘의 별을 켜볼까?","어제보다 한 걸음 더"];
 function Splash({out,name,color}){
+  const [line]=useState(()=>SPLASH_LINES[Math.floor(Math.random()*SPLASH_LINES.length)]);   // 열 때마다 하나씩 돌아가며
   return(
     <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:200,
       opacity:out?0:1,transition:reduceMotion?"none":"opacity .5s ease",pointerEvents:out?"none":"auto"}}>
       <NightBG vivid/>
       <div style={{position:"absolute",left:28,right:28,bottom:"16%",fontSize:32,fontWeight:800,lineHeight:1.3,letterSpacing:"-0.02em"}}>
-        <div className="sp-line" style={{animationDelay:".25s",color:"#F3F2FA"}}>오늘도 반가워,</div>
-        <div className="sp-line" style={{animationDelay:".95s",color,textShadow:`0 0 24px ${color}66`}}>{callName(name)}</div>
+        <div className="sp-line" style={{animationDelay:".25s",color,textShadow:`0 0 24px ${color}66`}}>{callName(name)}</div>
+        <div className="sp-line" style={{animationDelay:".95s",color:"#F3F2FA"}}>{line}</div>
       </div>
     </div>
   );
@@ -1040,7 +1042,7 @@ function ComposeSheet({C,to,onClose,onSend,onSent,sending}){
         style={{position:"absolute",inset:0,background:"rgba(4,5,10,.86)",animation:reduceMotion?"none":"fade .18s ease"}}/>
       {/* 배치용 래퍼는 클릭을 통과시켜, 모달 바깥을 누르면 뒤의 어두운 면이 받도록 */}
       <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",...W,position:"relative",pointerEvents:"none"}}>
-        <div className="gl" style={{...W,maxHeight:"100%",display:"flex",flexDirection:"column",background:"rgba(20,21,52,.97)",position:"relative",borderRadius:20,pointerEvents:"auto",
+        <div className="gl" style={{...W,maxHeight:"100%",display:"flex",flexDirection:"column",background:"rgba(24,24,32,.94)",position:"relative",borderRadius:20,pointerEvents:"auto",WebkitBackdropFilter:"blur(20px)",backdropFilter:"blur(20px)",
           padding:"18px 16px",animation:reduceMotion?"none":"fade .18s ease"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:12}}>
             <h2 style={{fontSize:20,fontWeight:800,letterSpacing:"-0.02em",margin:0}}>{to}에게</h2>
@@ -1059,7 +1061,7 @@ function ComposeSheet({C,to,onClose,onSend,onSent,sending}){
       <div style={{...W,position:"relative",flex:"0 0 auto",padding:"12px 0 calc(12px + env(safe-area-inset-bottom))",pointerEvents:"none"}}>
         <button className="btn" disabled={!canSend} onMouseDown={e=>e.preventDefault()} onClick={send}
           style={{...BTN_PRIMARY,display:"block",width:"100%",padding:"15px 0",fontSize:16,pointerEvents:"auto",
-            ...(canSend||sent?{}:{background:"rgba(255,255,255,.08)",color:"#6F6E8A",boxShadow:"none",cursor:"default"})}}>
+            ...(canSend||sent?{}:{background:"#34343F",color:"#8C8B9E",boxShadow:"none",cursor:"default"})}}>
           {sent?"보냈어요":sending?"보내는 중…":"별똥별로 보내기"}
         </button>
       </div>
@@ -1467,16 +1469,26 @@ function Manage({C,habits,setHabits}){
   );
 }
 /* 버튼 체계 — 콘텐츠(면으로 채운 둥근 사각형 카드)와 모양부터 다르게 보이도록 버튼은 전부 알약형.
-   primary: 별빛 옐로로 빛나는 버튼 (화면당 하나), secondary: 옐로 반투명 채움 + 옐로 글자 */
-const BTN_PRIMARY={background:"linear-gradient(180deg,#FFF0BE 0%,#FFE08A 100%)",color:"#2B2000",border:"none",borderRadius:999,fontWeight:700,fontFamily:"inherit",cursor:"pointer",
-  boxShadow:"0 0 24px rgba(255,224,138,.45),inset 0 1px 0 rgba(255,255,255,.7)"};
+   primary: 강조색 단색 버튼 (화면당 하나), secondary: 강조색 반투명 채움 + 강조색 글자 */
+/* 반짝이는 별 아이콘 — 글자(✦)는 기기마다 작고 다르게 보여서 SVG로 */
+function StarIcon({size=20}){
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{display:"block"}}>
+    <path d={sparklePath(12,12,10.5)} fill="currentColor"/></svg>;
+}
+const BTN_PRIMARY={background:"var(--acc)",color:"var(--on-acc)",border:"none",borderRadius:999,fontWeight:700,fontFamily:"inherit",cursor:"pointer",
+  boxShadow:"0 0 22px rgba(var(--acc-rgb),.3)"};   // 플랫 — 그라데이션·안쪽 하이라이트 없이 단색 + 은은한 빛
 /* secondary 채움색 = 상단 오늘/회고 토글의 선택 안 된 칸(트랙) 색 */
 /* 카드 — 글래스: 아주 옅은 반투명 면 + 흐림 + 그라데이션 빛 테두리(.gl) */
 const GLASS={background:"rgba(255,255,255,.045)",position:"relative",
   WebkitBackdropFilter:"blur(16px)",backdropFilter:"blur(16px)"};   // 테두리는 className="gl"의 그라데이션 링
-const FILL_2="rgba(255,224,138,.14)";
+/* Primary는 지금 보는 사람의 색 — 초록 화면은 별빛 옐로, 소운 화면은 라벤더.
+   앱 루트에 CSS 변수로 깔고, 버튼·체크·탭은 모두 이 변수를 씁니다 */
+const accentVars=(c)=>c===VIOLET
+  ?{"--acc":"#C8A6FF","--acc-rgb":"200,166,255","--on-acc":"#1B1233"}
+  :{"--acc":"#FFE08A","--acc-rgb":"255,224,138","--on-acc":"#231B00"};
+const FILL_2="rgba(var(--acc-rgb),.14)";
 /* secondary — 옐로 반투명 채움 + 옐로 글자 (선 없음) */
-const BTN_FILL={background:FILL_2,color:"#FFE08A",border:"none",borderRadius:999,fontWeight:600,fontFamily:"inherit",cursor:"pointer",
+const BTN_FILL={background:FILL_2,color:"var(--acc)",border:"none",borderRadius:999,fontWeight:600,fontFamily:"inherit",cursor:"pointer",
   WebkitBackdropFilter:"blur(12px)",backdropFilter:"blur(12px)"};
 function arrowBtn(C){return{...BTN_FILL,width:32,height:32,fontSize:14,lineHeight:1,padding:0};}
 function inp(C,extra){return{border:`1px solid ${C.line}`,borderRadius:9,padding:"9px 11px",fontSize:14,background:C.surface2,color:C.ink,fontFamily:"inherit",outline:"none",...extra};}
