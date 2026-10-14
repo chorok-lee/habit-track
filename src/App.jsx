@@ -9,8 +9,6 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 
 const GREEN  = "#D4F56A";   // 라임
 const VIOLET = "#7155F5";   // 퍼플
-/* 사람 색 위에 올라가는 글자색 (라임은 밝아서 검정, 퍼플은 흰색) */
-const onColor=(c)=>c===GREEN?"#0B0C12":"#FFFFFF";
 const HABITS_VERSION = 2;
 
 const DEFAULT_HABITS = [
@@ -501,9 +499,11 @@ export default function App(){
     const curName=person==="me"?meName:friendName;
     const other=person==="me"?"friend":"me", otherName=person==="me"?friendName:meName;
     return(
-      <div style={{marginTop:40,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:16}}>
+      <div style={{marginTop:60,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,width:"100%",fontSize:15,whiteSpace:"nowrap"}}>
+          <span style={{flex:1,height:1,background:"#262A34"}}/>
           <span><b style={{fontWeight:700,color:"#ECEDF2"}}>{curName}</b><span style={{color:"#9A9CAA"}}>의 기록</span></span>
+          <span style={{flex:1,height:1,background:"#262A34"}}/>
         </div>
         <button className="btn" onClick={()=>{setPerson(other);setSelStar(null);window.scrollTo({top:0,behavior:"smooth"});}}
           style={{...BTN_FILL,display:"flex",alignItems:"center",gap:8,padding:"10px 18px",fontSize:14}}>
@@ -653,7 +653,7 @@ export default function App(){
         {!booting&&tab==="sky"&&(
           <div className="fade">
             {/* 밤하늘 히어로 */}
-            <div className="sky" style={{marginBottom:16}}>
+            <div className="sky" style={{marginBottom:12}}>
               <ConstellationSky
                 meStars={myStars} frStars={frStars}
                 activeColor={activeColor} allComplete={allComplete}
@@ -669,7 +669,7 @@ export default function App(){
               : <CheerCard C={C} stars={myStars} name={meName} onPraise={lettersOn?()=>compose(meName,friendName):null}/>}
 
             {/* 날짜 스테퍼 — 위쪽 브리핑(하늘·진행률·소식)과 구획을 분명히 나눔 */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,margin:"36px 0 14px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,margin:"60px 0 12px"}}>
               <button className="btn" onClick={()=>setSelDate(toISO(addDays(fromISO(selDate),-1)))} style={arrowBtn(C)}>←</button>
               <div style={{fontSize:16,fontWeight:700,minWidth:118,textAlign:"center"}}>{fromISO(selDate).getMonth()+1}월 {fromISO(selDate).getDate()}일 ({WD[(fromISO(selDate).getDay()+6)%7]})</div>
               <button className="btn" onClick={()=>{const n=addDays(fromISO(selDate),1);if(n<=new Date())setSelDate(toISO(n));}}
@@ -691,14 +691,16 @@ export default function App(){
                   {owners.length>0&&<><br/><span className="mono" style={{fontSize:12}}>DB에 있는 소유자: {owners.join(" · ")}</span></>}
                 </div>;
               return(
-                <div style={{background:C.surface,borderRadius:20,padding:"4px 16px"}}>
+                /* 항목 사이는 구분선 없이 여백만. 체크한 항목은 행 자체에 배경이 깔려 한눈에 구분 */
+                <div style={{background:C.surface,borderRadius:20,padding:6,display:"flex",flexDirection:"column",gap:4}}>
                   {rows.map((r,i)=>(
                     <div key={r.h.id} className={r.onTap?"row-tap":""} onClick={r.onTap||undefined}
-                      style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"16px 0",
-                        borderTop:i?`1px solid ${C.lineSoft}`:"none",cursor:r.onTap?"pointer":"default"}}>
+                      style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 10px",
+                        borderRadius:14,background:r.on?"#272B36":"transparent",transition:"background .15s",
+                        cursor:r.onTap?"pointer":"default"}}>
                       <div style={{display:"flex",alignItems:"center",gap:14,minWidth:0}}>
                         {/* 이모지마다 크기감이 달라 보이지 않도록 같은 원 안에 작게 */}
-                        <span style={{width:40,height:40,borderRadius:"50%",background:"#1D2029",flex:"0 0 auto",
+                        <span style={{width:40,height:40,borderRadius:"50%",background:r.on?"#353A46":"#1D2029",flex:"0 0 auto",
                           display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,lineHeight:1}}>{emojiOf(r.h)}</span>
                         <div style={{minWidth:0}}>
                           <div style={{fontSize:15,fontWeight:600,wordBreak:"keep-all"}}>{r.h.name}</div>
@@ -716,7 +718,7 @@ export default function App(){
 
             {lettersOn&&
               <button className="btn" onClick={()=>compose(person==="me"?partner:friendName)}
-                style={{...BTN_PRIMARY,width:"100%",marginTop:20,padding:"15px 0",fontSize:15}}>
+                style={{...BTN_PRIMARY,width:"100%",marginTop:12,padding:"15px 0",fontSize:15}}>
                 <span style={{marginRight:7}}>✦</span>{(person==="me"?partner:friendName)}에게 별똥별 보내기
               </button>}
 
@@ -741,7 +743,7 @@ export default function App(){
               prevFr={isNotion?starsAtWeek(friendHabits.filter(h=>startedBy(h,prevMonISO)),prevMonISO):[]}
               curFr={frStars}/>
 
-            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {(isNotion||person==="me")
                 ? activeHabits.map(h=>(
                     <ChronicleRow key={h.id} h={h} C={C} col={activeColor} d={chronicleOf(h)}/>
@@ -790,7 +792,7 @@ function LoadingView({C,tab}){
   const n=LD_STARS.length, step=2.8/(n+2);   // 별이 하나씩 이어지는 간격
   return(
     <div className="fade" role="status" aria-live="polite">
-      <div className="sky" style={{marginBottom:16}}>
+      <div className="sky" style={{marginBottom:12}}>
         <svg viewBox="0 0 560 296" width="100%" style={{display:"block"}} aria-hidden="true">
           {bg.map((s,i)=><circle key={i} className="ld-bg" cx={s.x} cy={s.y} r={s.r} fill="#b0b8d8"
             style={{animationDelay:`${s.d}s`}}/>)}
@@ -814,13 +816,13 @@ function LoadingView({C,tab}){
       {/* 실제 화면 자리에 맞춘 뼈대 */}
       {tab==="sky"
         ? <>
-            <div className="sk" style={{height:92,marginBottom:14}}/>
-            <div className="sk" style={{height:42,margin:"36px 0 14px",borderRadius:12}}/>
+            <div className="sk" style={{height:100,marginBottom:12}}/>
+            <div className="sk" style={{height:32,margin:"60px auto 12px",width:200,borderRadius:999}}/>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
               <div className="sk" style={{height:296,borderRadius:20}}/>
             </div>
           </>
-        : <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        : <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {[0,1,2].map(i=><div key={i} className="sk" style={{height:118,animationDelay:`${i*0.08}s`}}/>)}
           </div>}
     </div>
@@ -1140,7 +1142,7 @@ function BurstEffect({cx,cy,color}){
 /* ── ProgressArea ── */
 function ProgressArea({C,rows}){
   return(
-    <div style={{background:C.surface,borderRadius:16,padding:"18px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:14,overflow:"hidden"}}>
+    <div style={{background:C.surface,borderRadius:16,padding:"18px 16px",marginBottom:12,display:"flex",flexDirection:"column",gap:18,overflow:"hidden"}}>
       {rows.map((row,ri)=>(
         <div key={ri} style={{display:"flex",alignItems:"flex-start",gap:12,minWidth:0}}>
           {/* 이름을 그대로 적습니다 — 보는 사람에 따라 '나'가 달라지므로 */}
@@ -1172,7 +1174,7 @@ function CheerCard({C,stars,name,onPraise}){
   if(!n) return null;
   return(
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,background:C.surface,
-      borderRadius:16,padding:"18px 16px",marginBottom:14}}>
+      borderRadius:16,padding:"18px 16px",marginBottom:12}}>
       <div style={{fontSize:14,lineHeight:1.5,color:C.ink,wordBreak:"keep-all"}}>
         {subjName(name)} 습관 {n}개를 쭉 지켰어요
       </div>
@@ -1204,7 +1206,7 @@ function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr
   /* '오늘' 탭의 밤하늘 패널과 같은 비율(560:296)·같은 옅은 외곽선 — 두 탭 첫 화면의 높이가 맞도록 */
   return(
     <div style={{background:C.surface,borderRadius:20,border:"1px solid rgba(255,255,255,.07)",
-      aspectRatio:"560/296",padding:"18px 16px",marginBottom:32,
+      aspectRatio:"560/296",padding:"18px 16px",marginBottom:60,
       display:"grid",gridTemplateColumns:"auto 1fr 1fr",gridTemplateRows:`auto repeat(${rows.length},minmax(0,1fr))`,
       columnGap:10,rowGap:8,alignItems:"center"}}>
       <span/>
@@ -1287,6 +1289,7 @@ function ChronicleRow({h,C,col,d}){
   const H=38, n=d.cells.length;
   const runs=comboRuns(d.cells);
   const inRun=new Set(runs.flatMap(r=>Array.from({length:r.len},(_,k)=>r.start+k)));
+  const lastRun=runs.length?runs[runs.length-1]:null;
   /* 주차 레이블의 '월'은 달이 바뀌는 칸에만 — 12px로 한 줄에 넣기 위해.
      첫 칸에도 붙이되, 바로 다음 칸에서 달이 바뀌면(긴 레이블 두 개가 붙음) 생략 */
   const months=d.cells.map(c=>weekOfMonth(c.mon).m);
@@ -1295,12 +1298,9 @@ function ChronicleRow({h,C,col,d}){
   return(
     <div style={{background:C.surface,borderRadius:16,padding:"18px 16px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:9,minWidth:0}}>
-          <span style={{fontSize:18,flex:"0 0 auto"}}>{emojiOf(h)}</span>
-          <span style={{fontSize:16,fontWeight:700,wordBreak:"keep-all"}}>{h.name}</span>
-        </div>
-        {d.window>0&&<span className="mono" style={{fontSize:13,flex:"0 0 auto",fontWeight:700,
-          color:d.recent>0?C.ink:C.sub,opacity:d.recent>0?1:.6}}>✦ {d.recent}/{d.window}</span>}
+        <span style={{fontSize:16,fontWeight:700,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</span>
+        {/* 가장 최근의 연속 달성 — 막대 안 대신 제목 오른쪽에 */}
+        {lastRun&&<span style={{fontSize:13,flex:"0 0 auto",fontWeight:700,color:C.ink}}>{lastRun.len}주 연속</span>}
       </div>
 
       <div style={{position:"relative"}}>
@@ -1322,11 +1322,7 @@ function ChronicleRow({h,C,col,d}){
         {/* 콤보: 연속 달성한 주들을 한 덩어리로 */}
         {runs.map(r=>(
           <div key={r.start} title={`${r.len}주 연속 달성`}
-            style={{position:"absolute",top:0,height:H,...spanPos(r.start,r.len,n),
-              background:col,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",
-              color:onColor(col),fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden"}}>
-            {r.len}주 연속
-          </div>
+            style={{position:"absolute",top:0,height:H,...spanPos(r.start,r.len,n),background:col,borderRadius:6}}/>
         ))}
       </div>
 
