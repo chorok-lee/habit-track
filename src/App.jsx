@@ -7,8 +7,8 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "re
    나 / 소운 전환 스위치.
 ──────────────────────────────────────────────────────────── */
 
-const GREEN  = "#D4F56A";   // 라임
-const VIOLET = "#7155F5";   // 퍼플
+const GREEN  = "#FFE08A";   // 초록 — 별빛 옐로 (Primary와 같은 색)
+const VIOLET = "#C8A6FF";   // 소운 — 라벤더
 const HABITS_VERSION = 2;
 
 const DEFAULT_HABITS = [
@@ -86,6 +86,80 @@ const sortHabits = (list) => [...(list||[])].sort((a,b)=>{
   return String(a.name||"").localeCompare(String(b.name||""),"ko");
 });
 function migrateHabits(stored){const ids=DEFAULT_HABITS.map(d=>d.id);return [...DEFAULT_HABITS,...stored.filter(s=>!ids.includes(s.id))];}
+
+/* ── 그래픽 공통 ───────────────────────────────────────────
+   별 = 오목한 네 꼭지 반짝임(sparkle) + 부드러운 빛 번짐(halo).
+   선 = 별 둘레에서 끊기는 가는 흰 선(성도 스타일). 배경 = 성운 그라데이션. */
+const sparklePath=(x,y,R)=>{const k=R*0.16;return `M${x} ${y-R}C${x+k} ${y-k} ${x+k} ${y-k} ${x+R} ${y}C${x+k} ${y+k} ${x+k} ${y+k} ${x} ${y+R}C${x-k} ${y+k} ${x-k} ${y+k} ${x-R} ${y}C${x-k} ${y-k} ${x-k} ${y-k} ${x} ${y-R}Z`;};
+const toneKey=(c)=>c===VIOLET?"v":"y";
+/* 결정적 의사난수 — 새로고침해도 같은 하늘 */
+const rnd=(i,s=1)=>{const a=Math.sin(i*12.9898+s*78.233)*43758.5453;return a-Math.floor(a);};
+
+/* 모든 SVG가 함께 쓰는 정의(빛 번짐·성운 그라데이션·글로우 필터). 앱에 한 번만 둡니다 */
+function SkyDefs(){
+  return(
+    <svg width="0" height="0" style={{position:"absolute"}} aria-hidden="true">
+      <defs>
+        {[["y",GREEN],["v",VIOLET]].map(([k,c])=>(
+          <React.Fragment key={k}>
+            <radialGradient id={`halo-${k}`}><stop offset="0" stopColor="#fff" stopOpacity=".9"/>
+              <stop offset=".25" stopColor={c} stopOpacity=".55"/><stop offset="1" stopColor={c} stopOpacity="0"/></radialGradient>
+            <radialGradient id={`neb-${k}`}><stop offset="0" stopColor={c} stopOpacity=".22"/>
+              <stop offset=".55" stopColor={c} stopOpacity=".07"/><stop offset="1" stopColor={c} stopOpacity="0"/></radialGradient>
+          </React.Fragment>
+        ))}
+        <radialGradient id="neb-warm"><stop offset="0" stopColor="#B07A55" stopOpacity=".22"/>
+          <stop offset="1" stopColor="#B07A55" stopOpacity="0"/></radialGradient>
+        <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="1.8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="bokeh" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="1.6"/></filter>
+      </defs>
+    </svg>
+  );
+}
+
+/* 별 하나 — 달성률(0→1)에 따라 희미한 점 → 작은 반짝임 → 빛나는 큰 반짝임 */
+function GlowStar({x,y,ratio,color,complete,scale=1,twinkle=0}){
+  const k=toneKey(color);
+  if(ratio<=0) return <circle cx={x} cy={y} r={1.6*scale} fill={color} opacity=".35"/>;
+  const R=(complete?10:3.5+ratio*4.5)*scale;
+  return(
+    <g className={complete&&!reduceMotion?"twk":""} style={complete?{animationDelay:`${twinkle}s`}:undefined}>
+      <circle cx={x} cy={y} r={R*(complete?2.6:2)} fill={`url(#halo-${k})`} opacity={complete?.85:.35+ratio*.35}/>
+      <path d={sparklePath(x,y,R)} fill={complete?"#FFFFFF":color} opacity={complete?1:.55+ratio*.4} filter="url(#glow)"/>
+      {complete&&<circle cx={x} cy={y} r={1.6*scale} fill="#fff"/>}
+    </g>
+  );
+}
+
+/* 별자리 선 — 별 둘레에서 끊기고, 둘 다 빛나면 실선·아니면 점선 */
+function ConstLines({seq,scale=1,dim=1}){
+  return seq.slice(1).map((b,i)=>{
+    const a=seq[i];
+    const dx=b.p.x-a.p.x,dy=b.p.y-a.p.y,L=Math.hypot(dx,dy)||1;
+    const gap=(s)=>(s.complete?11:s.ratio>0?7:4)*scale;
+    const ga=gap(a.s),gb=gap(b.s); if(L<=ga+gb) return null;
+    const lit=a.s.ratio>0&&b.s.ratio>0, both=a.s.complete&&b.s.complete;
+    return <line key={i} x1={a.p.x+dx/L*ga} y1={a.p.y+dy/L*ga} x2={b.p.x-dx/L*gb} y2={b.p.y-dy/L*gb}
+      stroke="#fff" strokeWidth={(both?1:0.7)*Math.max(.6,scale)} opacity={(both?.55:lit?.32:.18)*dim}
+      strokeDasharray={lit?undefined:`${2*scale} ${3*scale}`} strokeLinecap="round"/>;
+  });
+}
+
+/* 앱 전체 배경 — 남색→보라 밤하늘 + 반짝이는 별 (스플래시 이후에도 유지) */
+function NightBG(){
+  const stars=useMemo(()=>Array.from({length:90},(_,i)=>({x:rnd(i,1)*100,y:rnd(i,2)*100,r:.5+rnd(i,3)*1.1,o:.25+rnd(i,4)*.6,d:rnd(i,5)*6})),[]);
+  return(
+    <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
+      background:"linear-gradient(180deg,#03040B 0%,#070820 45%,#120F3A 80%,#1C1650 100%)"}}>
+      <svg width="100%" height="100%" style={{position:"absolute",inset:0}}>
+        {stars.map((t,i)=><circle key={i} className={i%3===0&&!reduceMotion?"twk":""} cx={`${t.x}%`} cy={`${t.y}%`} r={t.r}
+          fill="#fff" opacity={t.o} style={{animationDelay:`${t.d}s`}}/>)}
+      </svg>
+    </div>
+  );
+}
 
 /* 별자리 레이아웃: n개의 별을 자연스러운 별자리 형태로 배치 (중심 기준 상대좌표) */
 const LAYOUTS = {
@@ -186,10 +260,10 @@ function logsToMap(rows){
 
 export default function App(){
   const [cache0]=useState(readCache);
-  /* 스플래시: 앱을 열 때 1초 보여주고 0.3초에 걸쳐 사라짐 (데이터는 그 사이 뒤에서 불러옴) */
+  /* 스플래시: 인사 두 줄이 차례로 떠오른 뒤(약 2.4초) 0.5초에 걸쳐 사라짐 (데이터는 그 사이 뒤에서 불러옴) */
   const [splash,setSplash]=useState("on");   // on → out → off
   useEffect(()=>{
-    const a=setTimeout(()=>setSplash("out"),1000), b=setTimeout(()=>setSplash("off"),1300);
+    const a=setTimeout(()=>setSplash("out"),2400), b=setTimeout(()=>setSplash("off"),2900);
     return()=>{clearTimeout(a);clearTimeout(b);};
   },[]);      // 지난번 데이터 — 있으면 로딩 없이 바로 보여줌
   const [habits,setHabits]=useState(()=>cache0?cache0.hs.habits:[]);   // 판정 전에는 비워둠 (예시 데이터 깜빡임 방지)
@@ -518,27 +592,30 @@ export default function App(){
     );
   })();
 
-  const C={bg:"#0B0C12",surface:"#13151D",surface2:"#1D2029",ink:"#ECEDF2",sub:"#9A9CAA",line:"#282B36",lineSoft:"#22242E"};
+  const C={bg:"transparent",surface:"rgba(17,19,46,.62)",surface2:"rgba(255,255,255,.08)",ink:"#EEEDF7",sub:"#A3A2BD",line:"rgba(255,255,255,.12)",lineSoft:"rgba(255,255,255,.08)"};
 
   return (
-    <div style={{background:C.bg,minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
+    <div style={{background:"transparent",minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
         *{box-sizing:border-box}
-        html,body{max-width:100%;overflow-x:clip}
+        html,body{max-width:100%;overflow-x:clip;background:#0B0A26}   /* 화면 끝을 넘겨 당겨도 밤하늘 색 */
         .mono{font-family:'Space Mono',monospace;font-variant-numeric:tabular-nums}
         .tap{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;transition:transform .18s cubic-bezier(.34,1.56,.64,1),border-color .2s,background .25s,box-shadow .25s}
         .tap:active{transform:scale(.96)}
         .row-tap{-webkit-tap-highlight-color:transparent;user-select:none}
         .row-tap:active > span{transform:scale(.9)}
         .btn{transition:opacity .15s,transform .12s;cursor:pointer;-webkit-tap-highlight-color:transparent}.btn:hover{opacity:.85}.btn:active{transform:translateY(1px)}
-        .fade{animation:fade .34s ease}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        .fade{animation:fade .34s ease}
+        .sp-line{opacity:0;transform:translateY(12px);animation:spIn .7s cubic-bezier(.2,.8,.2,1) forwards}
+        @keyframes spIn{to{opacity:1;transform:none}}
+        @media(prefers-reduced-motion:reduce){.sp-line{animation:none;opacity:1;transform:none}}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
         .conf{position:absolute;left:50%;top:44%;width:6px;height:6px;opacity:1;border-radius:50%;animation:cburst 1.4s ease-out forwards}
         @keyframes cburst{to{transform:translate(var(--tx),var(--ty));opacity:0}}
         .glow-pulse{animation:gp 2.4s ease-in-out infinite}@keyframes gp{0%,100%{opacity:.7}50%{opacity:1}}
         /* ── 로딩: 별자리가 이어지는 애니메이션 + 실제 화면과 같은 자리의 뼈대 ── */
-        .sk{border-radius:16px;background:linear-gradient(90deg,#13151D 0%,#1A1D25 45%,#13151D 90%);
+        .sk{border-radius:16px;background:linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 45%,rgba(255,255,255,.04) 90%);
           background-size:220% 100%;animation:sk 1.5s ease-in-out infinite}
         @keyframes sk{from{background-position:110% 0}to{background-position:-110% 0}}
         .ld-line{stroke-dasharray:1;stroke-dashoffset:1;animation:ldDraw 2.8s cubic-bezier(.4,0,.2,1) infinite}
@@ -551,9 +628,12 @@ export default function App(){
         @media(prefers-reduced-motion:reduce){.tap,.btn,.fade,.conf,.glow-pulse{transition:none;animation:none}
           .sk,.ld-bg,.ld-msg{animation:none}.ld-line{animation:none;stroke-dashoffset:0;opacity:.6}.ld-star{animation:none;opacity:1}}
         .wrap{max-width:600px;margin:0 auto;padding:0 18px 96px}
-        .navbar{position:sticky;top:0;z-index:10;background:#0B0C12}
+        .navbar{position:sticky;top:0;z-index:10;background:rgba(4,5,14,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+        .twk{animation:twk 4.5s ease-in-out infinite}@keyframes twk{0%,100%{opacity:1}50%{opacity:.45}}
+        /* 이모지 — 색을 빼서 한 가지 색처럼 */
+        .emo{filter:grayscale(1) brightness(1.35) contrast(.85);opacity:.92}
         input.txt,select{font-family:inherit}
-        .sky{position:relative;border-radius:20px;overflow:hidden;
+        .sky{position:relative;border-radius:20px;overflow:hidden;background:radial-gradient(130% 110% at 50% 35%,rgba(16,16,48,.75) 0%,rgba(5,6,18,.85) 60%,rgba(3,3,10,.9) 100%)!important;
           background:radial-gradient(140% 110% at 50% 40%,#0e1020 0%,#080910 55%,#030305 100%);
           box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 8px 40px #00000060}   /* 옅은 외곽선 — 높이에 영향 없도록 inset */
         .pa-row{scrollbar-width:none;-ms-overflow-style:none;
@@ -588,13 +668,13 @@ export default function App(){
         @keyframes ltCard{to{opacity:1;transform:scale(1)}}
         .lt-now{animation-delay:0ms!important}
         /* 편지 카드 — 글래스(반투명·블러) 대신 플랫: 불투명한 단색 면, 그림자 없음 */
-        .glass{background:#1A1D26;border-radius:20px}
+        .glass{background:rgba(20,21,52,.97);border-radius:20px;border:1px solid rgba(200,166,255,.14)}
         .lt-card{padding:18px 16px;min-height:240px;display:flex;flex-direction:column}
         .lt-from{font-size:13px;color:#9A9CAA;text-align:center;margin:0}
         .lt-msg{font-size:17px;font-weight:700;line-height:1.78;color:#F3F5FC;text-align:center;margin:auto 0;
           white-space:pre-line;word-break:keep-all}
         .lt-acts{display:flex;flex-direction:column;align-items:center;gap:15px;margin-top:22px}
-        .lt-a1{background:#FFFFFF;color:#0B0C12;font-size:15px;font-weight:700;padding:13px 40px;border:none;
+        .lt-a1{background:linear-gradient(180deg,#FFF0BE,#FFE08A);color:#2B2000;box-shadow:0 0 24px rgba(255,224,138,.45);font-size:15px;font-weight:700;padding:13px 40px;border:none;
           border-radius:999px;cursor:pointer;font-family:inherit}
         .lt-a2{background:none;border:none;font-size:14px;color:#9A9CAA;cursor:pointer;
           padding:4px 8px;font-family:inherit}
@@ -629,17 +709,20 @@ export default function App(){
         }
       `}</style>
 
-      <div className="wrap">
+      <NightBG/>
+      <SkyDefs/>
+      <div className="wrap" style={{position:"relative",zIndex:1}}>
         {/* 헤더 — 일반적인 앱 헤더 형식: 가운데 화면 전환, 오른쪽 편지함 */}
         <header className="navbar" style={{paddingTop:16,paddingBottom:16,marginBottom:8}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center"}}>
             <span/>
-            <div role="tablist" style={{display:"flex",gap:3,background:FILL_2,borderRadius:999,padding:3}}>
+            <div role="tablist" style={{...BTN_FILL,display:"flex",gap:3,padding:3,cursor:"default"}}>
               {[["sky","오늘"],["review","회고"]].map(([k,l])=>(
                 <button key={k} role="tab" aria-selected={tab===k} className="btn" onClick={()=>setTab(k)}
                   style={{padding:"7px 20px",borderRadius:999,border:"none",fontSize:15,fontWeight:700,
-                    background:tab===k?"#FFFFFF":"transparent",color:tab===k?"#0B0C12":C.sub,
-                    transition:"background .18s,color .18s"}}>{l}</button>
+                    background:tab===k?"rgba(255,224,138,.16)":"transparent",color:tab===k?GREEN:C.sub,
+                    boxShadow:tab===k?"0 0 16px rgba(255,224,138,.28),inset 0 0 0 1px rgba(255,224,138,.5)":"none",
+                    transition:"background .18s,color .18s,box-shadow .18s"}}>{l}</button>
               ))}
             </div>
             <div style={{justifySelf:"end"}}>
@@ -707,19 +790,19 @@ export default function App(){
                   {rows.map((r,i)=>(
                     <div key={r.h.id} className={r.onTap?"row-tap":""} onClick={r.onTap||undefined}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 10px",
-                        borderRadius:14,background:r.on?"#272B36":"transparent",transition:"background .15s",
+                        borderRadius:14,background:r.on?"rgba(255,224,138,.07)":"transparent",transition:"background .15s",
                         cursor:r.onTap?"pointer":"default"}}>
                       <div style={{display:"flex",alignItems:"center",gap:14,minWidth:0}}>
                         {/* 이모지마다 크기감이 달라 보이지 않도록 같은 원 안에 작게 */}
-                        <span style={{width:40,height:40,borderRadius:"50%",background:r.on?"#353A46":"#1D2029",flex:"0 0 auto",
-                          display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,lineHeight:1}}>{emojiOf(r.h)}</span>
+                        <span style={{width:40,height:40,borderRadius:"50%",background:r.on?"rgba(255,224,138,.12)":"rgba(255,255,255,.06)",flex:"0 0 auto",
+                          display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,lineHeight:1}}><span className="emo">{emojiOf(r.h)}</span></span>
                         <div style={{minWidth:0}}>
                           <div style={{fontSize:15,fontWeight:600,wordBreak:"keep-all"}}>{r.h.name}</div>
                           <div className="mono" style={{fontSize:13,color:r.done?C.ink:C.sub,marginTop:3,fontWeight:r.done?700:400}}>{r.sub}</div>
                         </div>
                       </div>
-                      <span style={{width:28,height:28,borderRadius:9,flex:"0 0 auto",border:r.on?"none":"2px solid #343846",
-                        background:r.on?"#FFFFFF":"transparent",display:"flex",alignItems:"center",justifyContent:"center",
+                      <span style={{width:28,height:28,borderRadius:9,flex:"0 0 auto",border:r.on?"none":"2px solid rgba(255,255,255,.2)",
+                        background:r.on?GREEN:"transparent",boxShadow:r.on?"0 0 14px rgba(255,224,138,.6)":"none",display:"flex",alignItems:"center",justifyContent:"center",
                         color:"#0B0C12",fontSize:15,fontWeight:800,transition:"background .15s"}}>{r.on?"✓":""}</span>
                     </div>
                   ))}
@@ -780,7 +863,7 @@ export default function App(){
           onPick={(l)=>setModal({type:"read",letter:l})} onClose={()=>setModal(null)}
           onOwner={setOwnerOfDevice}/>}
       {toast&&<Toast C={C} text={toast}/>}
-      {splash!=="off"&&<Splash C={C} out={splash==="out"}/>}
+      {splash!=="off"&&<Splash out={splash==="out"} name={person==="me"?meName:friendName} color={person==="me"?GREEN:VIOLET}/>}
     </div>
   );
 }
@@ -806,17 +889,18 @@ function LoadingView({C,tab}){
     <div className="fade" role="status" aria-live="polite">
       <div className="sky" style={{marginBottom:12}}>
         <svg viewBox="0 0 560 296" width="100%" style={{display:"block"}} aria-hidden="true">
-          {bg.map((s,i)=><circle key={i} className="ld-bg" cx={s.x} cy={s.y} r={s.r} fill="#b0b8d8"
+          <ellipse cx="280" cy="140" rx="160" ry="110" fill="url(#neb-y)"/>
+          {bg.map((s,i)=><circle key={i} className="ld-bg" cx={s.x} cy={s.y} r={s.r} fill="#D8DCF5"
             style={{animationDelay:`${s.d}s`}}/>)}
           {LD_STARS.slice(1).map((p,i)=>{
             const a=LD_STARS[i];
             return <line key={i} className="ld-line" pathLength="1" x1={a[0]} y1={a[1]} x2={p[0]} y2={p[1]}
-              stroke={GREEN} strokeWidth="1.2" strokeLinecap="round" style={{animationDelay:`${i*step}s`}}/>;
+              stroke="#fff" strokeOpacity=".45" strokeWidth=".9" strokeLinecap="round" style={{animationDelay:`${i*step}s`}}/>;
           })}
           {LD_STARS.map((p,i)=>(
             <g key={i} className="ld-star" style={{animationDelay:`${Math.max(0,i-0.6)*step}s`}}>
-              <circle cx={p[0]} cy={p[1]} r="7" fill={GREEN} opacity=".18"/>
-              <circle cx={p[0]} cy={p[1]} r="2.6" fill="#fff"/>
+              <circle cx={p[0]} cy={p[1]} r="13" fill="url(#halo-y)" opacity=".7"/>
+              <path d={sparklePath(p[0],p[1],6)} fill="#fff" filter="url(#glow)"/>
             </g>
           ))}
         </svg>
@@ -841,22 +925,17 @@ function LoadingView({C,tab}){
   );
 }
 
-/* 스플래시 — 별 다섯 개가 이어진 작은 별자리와 앱 이름 */
-function Splash({C,out}){
-  const P=[[18,58],[40,30],[64,46],[88,20],[104,52]];
+/* 스플래시 — 밤하늘 위에 인사가 한 줄씩 떠오름: "오늘도 반가워," → "소운아" */
+const callName=(n)=>{const c=n.charCodeAt(n.length-1);return c>=0xAC00&&c<=0xD7A3&&(c-0xAC00)%28!==0?`${n}아`:`${n}야`;};
+function Splash({out,name,color}){
   return(
-    <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:200,background:C.bg,display:"flex",
-      flexDirection:"column",alignItems:"center",justifyContent:"center",gap:18,
-      opacity:out?0:1,transition:reduceMotion?"none":"opacity .3s ease",pointerEvents:out?"none":"auto"}}>
-      <svg width="122" height="76" viewBox="0 0 122 76" className="fade">
-        <polyline points={P.map(p=>p.join(",")).join(" ")} fill="none" stroke={GREEN} strokeWidth="1.3"
-          strokeLinecap="round" strokeLinejoin="round" opacity=".7"/>
-        {P.map((p,i)=><g key={i}>
-          <circle cx={p[0]} cy={p[1]} r={i===3?7:5} fill={GREEN} opacity=".2"/>
-          <circle cx={p[0]} cy={p[1]} r={i===3?3.2:2.4} fill="#fff"/>
-        </g>)}
-      </svg>
-      <div className="fade" style={{fontSize:20,fontWeight:800,letterSpacing:"-0.02em",color:C.ink}}>습관 별자리</div>
+    <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:200,
+      opacity:out?0:1,transition:reduceMotion?"none":"opacity .5s ease",pointerEvents:out?"none":"auto"}}>
+      <NightBG/>
+      <div style={{position:"absolute",left:28,right:28,bottom:"16%",fontSize:32,fontWeight:800,lineHeight:1.3,letterSpacing:"-0.02em"}}>
+        <div className="sp-line" style={{animationDelay:".25s",color:"#F3F2FA"}}>오늘도 반가워,</div>
+        <div className="sp-line" style={{animationDelay:".95s",color,textShadow:`0 0 24px ${color}66`}}>{callName(name)}</div>
+      </div>
     </div>
   );
 }
@@ -956,12 +1035,12 @@ function ComposeSheet({C,to,onClose,onSend,onSent,sending}){
         style={{position:"absolute",inset:0,background:"rgba(4,5,10,.86)",animation:reduceMotion?"none":"fade .18s ease"}}/>
       {/* 배치용 래퍼는 클릭을 통과시켜, 모달 바깥을 누르면 뒤의 어두운 면이 받도록 */}
       <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",...W,position:"relative",pointerEvents:"none"}}>
-        <div style={{...W,maxHeight:"100%",display:"flex",flexDirection:"column",background:"#1A1D26",borderRadius:20,pointerEvents:"auto",
+        <div style={{...W,maxHeight:"100%",display:"flex",flexDirection:"column",background:"rgba(20,21,52,.97)",border:"1px solid rgba(200,166,255,.14)",borderRadius:20,pointerEvents:"auto",
           padding:"18px 16px",animation:reduceMotion?"none":"fade .18s ease"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:12}}>
             <h2 style={{fontSize:20,fontWeight:800,letterSpacing:"-0.02em",margin:0}}>{to}에게</h2>
             <button className="btn" onClick={()=>{if(!sent)onClose();}}
-              style={{...BTN_FILL,height:36,padding:"0 14px",fontSize:14,background:"#262A34"}}>취소</button>
+              style={{...BTN_FILL,height:36,padding:"0 14px",fontSize:14}}>취소</button>
           </div>
           {/* 상자 속 상자 없이 — 모달 면 위에 바로 씀 */}
           <textarea ref={ref} value={text} maxLength={300} onChange={e=>setText(e.target.value)}
@@ -975,7 +1054,7 @@ function ComposeSheet({C,to,onClose,onSend,onSent,sending}){
       <div style={{...W,position:"relative",flex:"0 0 auto",padding:"12px 0 calc(12px + env(safe-area-inset-bottom))",pointerEvents:"none"}}>
         <button className="btn" disabled={!canSend} onMouseDown={e=>e.preventDefault()} onClick={send}
           style={{...BTN_PRIMARY,display:"block",width:"100%",padding:"15px 0",fontSize:16,pointerEvents:"auto",
-            ...(canSend||sent?{}:{background:"#23262F",color:"#6B6E7A",cursor:"default"})}}>
+            ...(canSend||sent?{}:{background:"rgba(255,255,255,.08)",color:"#6F6E8A",boxShadow:"none",cursor:"default"})}}>
           {sent?"보냈어요":sending?"보내는 중…":"별똥별로 보내기"}
         </button>
       </div>
@@ -1027,7 +1106,7 @@ function LetterBox({C,letters,who,owners,onPick,onClose,onOwner}){
 function Toast({C,text}){
   return (
     <div className="fade" style={{position:"fixed",left:"50%",bottom:22,transform:"translateX(-50%)",zIndex:50,
-      maxWidth:"min(92vw,420px)",background:C.surface2,borderRadius:12,
+      maxWidth:"min(92vw,420px)",background:"rgba(26,27,62,.96)",borderRadius:12,
       padding:"12px 16px",fontSize:14,color:C.ink,boxShadow:"0 8px 30px #00000070",lineHeight:1.5}}>{text}</div>
   );
 }
@@ -1042,21 +1121,20 @@ function Toast({C,text}){
 
 
 function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSelStar,burst,person,meName,friendName}){
-  const bg=useMemo(()=>Array.from({length:60},(_,i)=>{
-    const a=Math.sin(i*12.9898+1)*43758.5453,b=Math.sin(i*78.233+2)*43758.5453;
-    const rx=a-Math.floor(a),ry=b-Math.floor(b);
-    return{x:(rx*560).toFixed(1),y:(ry*296).toFixed(1),r:(0.4+(Math.sin(i*3.7)*0.5+0.5)*0.9).toFixed(2),o:(0.08+rx*0.22).toFixed(2)};
-  }),[]);
+  const bg=useMemo(()=>Array.from({length:70},(_,i)=>({x:rnd(i,1)*560,y:rnd(i,2)*296,r:.35+rnd(i,3)*.9,o:.15+rnd(i,4)*.45,d:rnd(i,5)*5})),[]);
+  const bokeh=useMemo(()=>Array.from({length:9},(_,i)=>({x:30+rnd(i,7)*500,y:20+rnd(i,8)*256,r:1.6+rnd(i,9)*2.2,o:.18+rnd(i,10)*.25})),[]);
 
-  const ME_C=[148,152], FR_C=[412,152];
-  const mePts = buildPoints(meStars, ME_C, 1.0);
-  const frPts = buildPoints(frStars, FR_C, 1.0);
+  /* 별자리를 1.7배로 — 각자 반쪽 하늘의 대부분을 채우도록 */
+  const SC=1.7, ME_C=[148,152], FR_C=[412,152];
+  const mePts = buildPoints(meStars, ME_C, SC);
+  const frPts = buildPoints(frStars, FR_C, SC);
   const meAll = meStars.length>0 && meStars.every(s=>s.complete);
   const frAll = frStars.length>0 && frStars.every(s=>s.complete);
 
   /* 글자는 SVG 밖(HTML)에 실제 px 크기로 — SVG 안에 두면 폰에서 7px까지 줄어듭니다 */
   const lab=(x,col,on)=>({position:"absolute",top:12,left:`${x/560*100}%`,transform:"translateX(-50%)",
-    fontSize:13,fontWeight:700,color:col,opacity:on?0.95:0.35,pointerEvents:"none",whiteSpace:"nowrap"});
+    fontSize:13,fontWeight:700,color:col,opacity:on?0.95:0.4,pointerEvents:"none",whiteSpace:"nowrap",
+    textShadow:on?`0 0 12px ${col}88`:"none"});
   const tip=selStar&&(()=>{
     const star=(person==="me"?meStars:frStars).find(s=>s.id===selStar);
     const pt=(person==="me"?mePts:frPts).find(p=>p.id===selStar);
@@ -1067,19 +1145,20 @@ function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSe
     <span style={lab(FR_C[0],VIOLET,person!=="me")}>{friendName||"소운"}</span>
     {tip&&<StarTooltip star={tip.star} pt={tip.pt} color={person==="me"?GREEN:VIOLET}/>}
     <svg viewBox="0 0 560 296" width="100%" style={{display:"block"}} onClick={()=>setSelStar(null)}>
-      {bg.map((s,i)=><circle key={i} cx={s.x} cy={s.y} r={s.r} fill="#b0b8d8" opacity={s.o} style={{pointerEvents:"none"}}/>)}
+      {/* 성운 — 각자의 색으로 은은하게 + 가운데 따뜻한 빛 */}
+      <ellipse cx="280" cy="150" rx="170" ry="120" fill="url(#neb-warm)"/>
+      <ellipse cx={ME_C[0]} cy={ME_C[1]} rx="150" ry="115" fill="url(#neb-y)" opacity={person==="friend"?.5:1}/>
+      <ellipse cx={FR_C[0]} cy={FR_C[1]} rx="150" ry="115" fill="url(#neb-v)" opacity={person==="me"?.5:1}/>
+      {/* 배경 별: 작은 별 + 초점이 흐린 큰 별 */}
+      {bg.map((t,i)=><circle key={i} className={i%4===0&&!reduceMotion?"twk":""} cx={t.x} cy={t.y} r={t.r} fill="#D8DCF5" opacity={t.o}
+        style={{pointerEvents:"none",animationDelay:`${t.d}s`}}/>)}
+      {bokeh.map((t,i)=><circle key={"b"+i} cx={t.x} cy={t.y} r={t.r} fill="#fff" opacity={t.o} filter="url(#bokeh)" style={{pointerEvents:"none"}}/>)}
 
-      {/* 구분선 */}
-      <line x1="280" y1="24" x2="280" y2="272" stroke="#ffffff" strokeWidth="1" strokeDasharray="1 7" opacity="0.12" style={{pointerEvents:"none"}}/>
-
-      {/* 나 별자리 — 선택 시 밝게, 아니면 약간 dim */}
-      <OneStar stars={meStars} pts={mePts} color={GREEN} allComplete={meAll}
+      <OneStar stars={meStars} pts={mePts} color={GREEN} allComplete={meAll} scale={1.15}
         selStar={person==="me"?selStar:null}
         onSelect={id=>{ if(person==="me") setSelStar(k=>k===id?null:id); }}
         dim={person==="friend"}/>
-
-      {/* 소운 별자리 */}
-      <OneStar stars={frStars} pts={frPts} color={VIOLET} allComplete={frAll}
+      <OneStar stars={frStars} pts={frPts} color={VIOLET} allComplete={frAll} scale={1.15}
         selStar={person==="friend"?selStar:null}
         onSelect={id=>{ if(person==="friend") setSelStar(k=>k===id?null:id); }}
         dim={person==="me"}/>
@@ -1098,36 +1177,19 @@ function buildPoints(stars, center, scale=1.0){
 }
 
 /* 별자리 컴포넌트: 선 + 별들 */
-function OneStar({stars,pts,color,allComplete,selStar,onSelect,dim}){
+function OneStar({stars,pts,color,allComplete,selStar,onSelect,dim,scale=1}){
   if(!stars.length||!pts.length) return null;
-  const n=stars.length;
-  const order=connOrder(n);
-  const ordered=order.map(i=>({star:stars[i],pt:pts[i]}));
-  const baseOp=dim?0.25:1;
-
+  const seq=connOrder(stars.length).map(i=>({s:stars[i],p:pts[i]}));
   return(
-    <g opacity={baseOp}>
-      {/* 연결선 */}
-      {ordered.slice(1).map(({pt:p},i)=>{
-        const a=ordered[i].pt, b=p;
-        const aR=ordered[i].star.ratio, bR=ordered[i+1]?.star.ratio??0;
-        const bright=(aR>0.3&&bR>0.3), lineBright=Math.min(aR,bR);
-        return(
-          <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-            stroke={color} strokeWidth={allComplete?1.6:bright?1.2:0.6}
-            opacity={allComplete?0.75:lineBright*0.55+0.05} strokeLinecap="round"/>
-        );
-      })}
-
-      {/* 별 */}
+    <g opacity={dim?0.38:1}>
+      <ConstLines seq={seq} scale={scale}/>
       {stars.map((s,i)=>{
         const pt=pts[i];
-        const isSel=selStar===s.id;
         return(
           <g key={s.id} style={{cursor:"pointer"}} onClick={e=>{e.stopPropagation();onSelect(s.id);}}>
-            <circle cx={pt.x} cy={pt.y} r={24} fill="transparent"/>
-            {isSel&&<circle cx={pt.x} cy={pt.y} r={16} fill="none" stroke={color} strokeWidth="1" strokeDasharray="2 3" opacity=".5"/>}
-            <PlanetStar x={pt.x} y={pt.y} ratio={s.ratio} color={color} complete={s.complete} allComplete={allComplete}/>
+            <circle cx={pt.x} cy={pt.y} r={26} fill="transparent"/>
+            {selStar===s.id&&<circle cx={pt.x} cy={pt.y} r={20*scale} fill="none" stroke="#fff" strokeWidth=".8" strokeDasharray="2 3" opacity=".5"/>}
+            <GlowStar x={pt.x} y={pt.y} ratio={s.ratio} color={color} complete={s.complete} scale={scale} twinkle={rnd(i,11)*4}/>
           </g>
         );
       })}
@@ -1143,42 +1205,6 @@ function connOrder(n){
   return orders[n]||Array.from({length:n},(_,i)=>i);
 }
 
-/* 별(행성) — 밝기가 ratio에 따라 변함 */
-function PlanetStar({x,y,ratio,color,complete,allComplete}){
-  /* ratio 0→1: 핵 크기, 글로우 반경, 광채 길이 모두 선형 증가 */
-  const core    = 2.2 + ratio*3.2;          // 핵 반경
-  const glow1   = core + 2 + ratio*6;       // 1차 글로우
-  const glow2   = glow1 + ratio*10;         // 2차 글로우
-  const spike   = 4 + ratio*14;             // 십자 광채 길이
-  const sw      = 0.8 + ratio*1.4;         // 광채 두께
-  const coreOp  = 0.25 + ratio*0.75;       // 핵 불투명도
-  const g1Op    = ratio*0.30;
-  const g2Op    = ratio*0.12;
-  const lineOp  = ratio*0.80;
-  const cls     = allComplete&&complete ? "glow-pulse" : "";
-
-  return(
-    <g className={cls}>
-      {/* 2차 글로우 (멀리 퍼지는 빛) */}
-      {ratio>0.1&&<circle cx={x} cy={y} r={glow2} fill={color} opacity={g2Op}/>}
-      {/* 1차 글로우 */}
-      {ratio>0.05&&<circle cx={x} cy={y} r={glow1} fill={color} opacity={g1Op}/>}
-      {/* 십자 광채 */}
-      {ratio>0.15&&<>
-        <line x1={x} y1={y-spike} x2={x} y2={y+spike} stroke={color} strokeWidth={sw} opacity={lineOp} strokeLinecap="round"/>
-        <line x1={x-spike} y1={y} x2={x+spike} y2={y} stroke={color} strokeWidth={sw} opacity={lineOp} strokeLinecap="round"/>
-        {ratio>0.5&&<>
-          <line x1={x-spike*.6} y1={y-spike*.6} x2={x+spike*.6} y2={y+spike*.6} stroke={color} strokeWidth={sw*.5} opacity={lineOp*.5} strokeLinecap="round"/>
-          <line x1={x+spike*.6} y1={y-spike*.6} x2={x-spike*.6} y2={y+spike*.6} stroke={color} strokeWidth={sw*.5} opacity={lineOp*.5} strokeLinecap="round"/>
-        </>}
-      </>}
-      {/* 핵 */}
-      <circle cx={x} cy={y} r={core} fill={complete?"#ffffff":color} opacity={coreOp}/>
-      {complete&&<circle cx={x} cy={y} r={core*.5} fill="#ffffff" opacity="0.9"/>}
-    </g>
-  );
-}
-
 /* 별 툴팁 — HTML로 그려서 폰에서도 읽히는 크기 유지. 별 위에 뜨고, 양 끝에선 안쪽으로 붙습니다 */
 function StarTooltip({star,pt,color}){
   const pct=Math.round(star.ratio*100);
@@ -1187,28 +1213,22 @@ function StarTooltip({star,pt,color}){
   return(
     <div style={{position:"absolute",left:`${pt.x/560*100}%`,top:`${pt.y/296*100}%`,zIndex:2,
       transform:`translate(${tx}, calc(-100% - 16px))`,pointerEvents:"none",
-      background:"#14151f",borderRadius:10,padding:"8px 12px",textAlign:"center",whiteSpace:"nowrap",
-      boxShadow:"0 6px 20px #00000080"}}>
-      <div style={{fontSize:14,fontWeight:700,color:"#ECEDF2"}}>{star.emoji} {star.name}</div>
+      background:"rgba(16,17,44,.9)",border:"1px solid rgba(255,255,255,.14)",borderRadius:12,padding:"8px 12px",textAlign:"center",whiteSpace:"nowrap",
+      WebkitBackdropFilter:"blur(10px)",backdropFilter:"blur(10px)",boxShadow:"0 6px 20px #00000080"}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#EEEDF7"}}><span className="emo">{star.emoji}</span> {star.name}</div>
       <div className="mono" style={{fontSize:12,fontWeight:700,color,marginTop:3}}>{star.done}/{star.target} ({pct}%)</div>
     </div>
   );
 }
 
-/* 전체 달성 폭발 */
+/* 목표를 채운 순간 — 부드러운 빛 번짐과 큰 반짝임 */
 function BurstEffect({cx,cy,color}){
   if(reduceMotion) return null;
-  const rays=Array.from({length:12},(_,i)=>{
-    const a=(i/12)*Math.PI*2;
-    const len=30+Math.random()*50;
-    return{x2:cx+Math.cos(a)*len,y2:cy+Math.sin(a)*len,op:0.4+Math.random()*.5};
-  });
   return(
-    <g style={{pointerEvents:"none"}}>
-      <circle cx={cx} cy={cy} r="60" fill={color} opacity="0.08"/>
-      <circle cx={cx} cy={cy} r="30" fill={color} opacity="0.14"/>
-      {rays.map((r,i)=><line key={i} x1={cx} y1={cy} x2={r.x2} y2={r.y2} stroke={color} strokeWidth="1.2" opacity={r.op} strokeLinecap="round"/>)}
-      <circle cx={cx} cy={cy} r="8" fill="#ffffff" opacity="0.9"/>
+    <g style={{pointerEvents:"none"}} className="fade">
+      <circle cx={cx} cy={cy} r="90" fill={`url(#neb-${toneKey(color)})`}/>
+      <circle cx={cx} cy={cy} r="40" fill={`url(#halo-${toneKey(color)})`} opacity=".8"/>
+      <path d={sparklePath(cx,cy,26)} fill="#fff" filter="url(#glow)"/>
     </g>
   );
 }
@@ -1227,7 +1247,7 @@ function ProgressArea({C,rows}){
           <div className="pa-row" style={{display:"flex",flexWrap:"nowrap",gap:9,flex:1,minWidth:0,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
             {row.items.map(it=>(
               <div key={it.key} style={{flex:"0 0 auto",width:40,display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
-                <span style={{fontSize:15,opacity:it.complete?1:.8}}>{it.emoji}</span>
+                <span className="emo" style={{fontSize:15}}>{it.emoji}</span>
                 <div style={{width:"100%",height:5,borderRadius:3,background:C.lineSoft,overflow:"hidden"}}>
                   <div style={{height:"100%",width:`${Math.round(it.ratio*100)}%`,background:it.color,borderRadius:3,transition:"width .45s ease"}}/>
                 </div>
@@ -1304,35 +1324,23 @@ function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr
    아래쪽 띠가 그 주에 채운 목표 비율입니다. */
 function MiniSky({C,stars,color,past}){
   const W=120,H=64;
-  const pts=buildPoints(stars,[W/2,H/2],0.52);
+  const pts=buildPoints(stars,[W/2,H/2],0.6);
   const seq=connOrder(stars.length).map(i=>({s:stars[i],p:pts[i]})).filter(x=>x.p);
   const done=stars.filter(s=>s.complete).length;
   const ratio=stars.length?done/stars.length:0;
   /* 칸 높이에 맞춰 늘어나도록: 바탕은 div, 별은 비율 유지 SVG, 아래 띠는 HTML */
   return(
     <div title={`${done}/${stars.length} 완성`} style={{position:"relative",alignSelf:"stretch",minHeight:0,borderRadius:10,overflow:"hidden",
-      background:"radial-gradient(120% 100% at 50% 40%,#10131f 0%,#07080e 70%,#04050a 100%)",opacity:past?0.8:1}}>
+      background:"radial-gradient(120% 100% at 50% 40%,rgba(18,18,52,.8) 0%,rgba(6,6,20,.9) 70%,rgba(3,3,10,.95) 100%)",opacity:past?0.8:1}}>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
         style={{position:"absolute",left:0,top:0,width:"100%",height:"calc(100% - 12px)"}}>
-        {seq.slice(1).map((x,i)=>{
-          const a=seq[i].p,b=x.p,m=Math.min(seq[i].s.ratio,x.s.ratio);
-          return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color}
-            strokeWidth={m>0.3?0.8:0.4} opacity={m*0.5+0.08} strokeLinecap="round"/>;
-        })}
-        {stars.map((s,i)=>{
-          const p=pts[i]; if(!p) return null;
-          const r=1.0+s.ratio*1.9;
-          return(
-            <g key={s.id}>
-              {s.complete&&<circle cx={p.x} cy={p.y} r={r*2.6} fill={color} opacity={0.2}/>}
-              <circle cx={p.x} cy={p.y} r={r} fill={s.complete?"#FFFFFF":color} opacity={s.complete?1:0.25+s.ratio*0.7}/>
-            </g>
-          );
-        })}
+        <ellipse cx={W/2} cy={H/2} rx="50" ry="30" fill={`url(#neb-${toneKey(color)})`}/>
+        <ConstLines seq={seq} scale={0.35}/>
+        {stars.map((s,i)=>{const p=pts[i]; return p&&<GlowStar key={s.id} x={p.x} y={p.y} ratio={s.ratio} color={color} complete={s.complete} scale={0.4}/>;})}
       </svg>
       {/* 이 주에 채운 목표 비율 */}
       <div style={{position:"absolute",left:9,right:9,bottom:8,height:3,borderRadius:2,background:"rgba(255,255,255,.08)"}}>
-        {ratio>0&&<div style={{width:`${ratio*100}%`,height:"100%",borderRadius:2,background:color,opacity:past?0.75:1}}/>}
+        {ratio>0&&<div style={{width:`${ratio*100}%`,height:"100%",borderRadius:2,background:color,opacity:past?0.75:1,boxShadow:`0 0 8px ${color}88`}}/>}
       </div>
     </div>
   );
@@ -1396,7 +1404,7 @@ function ChronicleRow({h,C,col,d}){
         {/* 콤보: 연속 달성한 주들을 한 덩어리로 */}
         {runs.map(r=>(
           <div key={r.start} title={`${r.len}주 연속 달성`}
-            style={{position:"absolute",top:0,height:H,...spanPos(r.start,r.len,n),background:col,borderRadius:6}}/>
+            style={{position:"absolute",top:0,height:H,...spanPos(r.start,r.len,n),background:col,borderRadius:6,boxShadow:`0 0 16px ${col}55`}}/>
         ))}
       </div>
 
@@ -1422,7 +1430,7 @@ function FriendChronicleRow({h,C,col}){
   return(
     <div style={{background:C.surface,borderRadius:16,padding:"18px 16px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:17}}>{emojiOf(h)}</span><span style={{fontSize:14.5,fontWeight:700}}>{h.name}</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:9}}><span className="emo" style={{fontSize:17}}>{emojiOf(h)}</span><span style={{fontSize:14.5,fontWeight:700}}>{h.name}</span></div>
         <span className="mono" style={{fontSize:12,color:h.done>=tgt?col:C.sub,fontWeight:700}}>{h.done}/{tgt}{h.done>=tgt?" ✦":""}</span>
       </div>
       <div style={{height:6,borderRadius:3,background:C.lineSoft,overflow:"hidden"}}>
@@ -1439,7 +1447,7 @@ function Manage({C,habits,setHabits}){
     <div className="fade" style={{background:C.surface,borderRadius:16,padding:"18px 16px",marginTop:8}}>
       {habits.map(h=>(
         <div key={h.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
-          <span style={{display:"flex",alignItems:"center",gap:9,fontSize:14}}><span style={{fontSize:16}}>{emojiOf(h)}</span>{h.name}<span className="mono" style={{color:C.sub,fontSize:11}}>{h.kind==="daily"?"매일":`주${h.target}`}</span></span>
+          <span style={{display:"flex",alignItems:"center",gap:9,fontSize:14}}><span className="emo" style={{fontSize:16}}>{emojiOf(h)}</span>{h.name}<span className="mono" style={{color:C.sub,fontSize:11}}>{h.kind==="daily"?"매일":`주${h.target}`}</span></span>
           <button className="btn" onClick={()=>setHabits(p=>p.filter(x=>x.id!==h.id))} style={{background:"none",border:"none",color:C.sub,fontSize:13}}>삭제</button>
         </div>
       ))}
@@ -1454,10 +1462,13 @@ function Manage({C,habits,setHabits}){
   );
 }
 /* 버튼 체계 — 콘텐츠(면으로 채운 둥근 사각형 카드)와 모양부터 다르게 보이도록 버튼은 전부 알약형.
-   primary: 흰 바탕 + 검정 글자 (화면당 하나), secondary: 회색 채움 */
-const BTN_PRIMARY={background:"#FFFFFF",color:"#0B0C12",border:"none",borderRadius:999,fontWeight:700,fontFamily:"inherit",cursor:"pointer"};
+   primary: 별빛 옐로로 빛나는 버튼 (화면당 하나), secondary: 글래스 */
+const BTN_PRIMARY={background:"linear-gradient(180deg,#FFF0BE 0%,#FFE08A 100%)",color:"#2B2000",border:"none",borderRadius:999,fontWeight:700,fontFamily:"inherit",cursor:"pointer",
+  boxShadow:"0 0 24px rgba(255,224,138,.45),inset 0 1px 0 rgba(255,255,255,.7)"};
 /* secondary 채움색 = 상단 오늘/회고 토글의 선택 안 된 칸(트랙) 색 */
-const FILL_2="#1F222B";
-const BTN_FILL={background:FILL_2,color:"#ECEDF2",border:"none",borderRadius:999,fontWeight:600,fontFamily:"inherit",cursor:"pointer"};
+const FILL_2="rgba(255,255,255,.07)";
+/* secondary — 글래스: 반투명 + 흐림 + 아주 옅은 테두리 */
+const BTN_FILL={background:FILL_2,color:"#EEEDF7",border:"1px solid rgba(255,255,255,.14)",borderRadius:999,fontWeight:600,fontFamily:"inherit",cursor:"pointer",
+  WebkitBackdropFilter:"blur(12px)",backdropFilter:"blur(12px)",boxShadow:"inset 0 1px 0 rgba(255,255,255,.08)"};
 function arrowBtn(C){return{...BTN_FILL,width:32,height:32,fontSize:14,lineHeight:1,padding:0};}
 function inp(C,extra){return{border:`1px solid ${C.line}`,borderRadius:9,padding:"9px 11px",fontSize:14,background:C.surface2,color:C.ink,fontFamily:"inherit",outline:"none",...extra};}
