@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 /* ────────────────────────────────────────────────────────────
    습관 별자리 — 1인 1별자리 구조
@@ -396,14 +396,15 @@ export default function App(){
 
   const openBox=()=>setModal({type:"box"});
   /* from: 보내는 사람. 칭찬하기는 지금 보고 있는 화면의 주인이 상대에게 보냅니다 */
-  const compose=(to,from)=>setModal({type:"compose",to:to||partner,from});
+  const compose=(to,from)=>{primeKeyboard();setModal({type:"compose",to:to||partner,from});};
   const closeLetter=()=>setModal(null);
+  /* 성공하면 true — 창은 작성 화면이 별똥별 연출을 끝낸 뒤 닫습니다 */
   const sendLetter=async(to,text,from)=>{
     setSending(true);
     try{
       await api("/api/messages",{method:"POST",body:JSON.stringify({from:from||who,to:to,text:text})});
-      setModal(null); setToast("별똥별을 보냈어요");
-    }catch(e){ setToast(e.message||"보내지 못했어요."); }
+      return true;
+    }catch(e){ setToast(e.message||"보내지 못했어요."); return false; }
     finally{ setSending(false); }
   };
   const setOwnerOfDevice=(name)=>{
@@ -531,7 +532,7 @@ export default function App(){
         .tap:active{transform:scale(.96)}
         .row-tap{-webkit-tap-highlight-color:transparent;user-select:none}
         .row-tap:active > span{transform:scale(.9)}
-        .btn{transition:opacity .15s,transform .12s;cursor:pointer}.btn:hover{opacity:.85}.btn:active{transform:translateY(1px)}
+        .btn{transition:opacity .15s,transform .12s;cursor:pointer;-webkit-tap-highlight-color:transparent}.btn:hover{opacity:.85}.btn:active{transform:translateY(1px)}
         .fade{animation:fade .34s ease}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
         .conf{position:absolute;left:50%;top:44%;width:6px;height:6px;opacity:1;border-radius:50%;animation:cburst 1.4s ease-out forwards}
         @keyframes cburst{to{transform:translate(var(--tx),var(--ty));opacity:0}}
@@ -606,11 +607,21 @@ export default function App(){
           border:none;border-radius:14px;padding:13px 14px;font-size:15px;
           line-height:1.7;font-family:inherit;outline:none}
         .lt-ta::placeholder{color:#6B6E7A}
+        textarea::placeholder{color:#6B6E7A}
         .lt-chip{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);color:#D6DAE8;
           border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:inherit}
         .lt-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 2px;
           border-bottom:1px solid #262A34;cursor:pointer;text-align:left;width:100%;
           background:none;border-left:0;border-right:0;border-top:0;font-family:inherit;color:inherit}
+        /* 보낸 뒤: 별똥별이 보내기 버튼에서 오른쪽 위로 날아감 */
+        .send-meteor{position:absolute;left:50%;bottom:40px;width:120px;height:2px;border-radius:2px;pointer-events:none;
+          transform-origin:100% 50%;
+          background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.85) 100%);
+          animation:sendFly .8s cubic-bezier(.3,.6,.2,1) forwards}
+        .send-meteor::after{content:"";position:absolute;right:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:#fff;
+          box-shadow:0 0 12px 4px rgba(255,255,255,.6)}
+        @keyframes sendFly{0%{transform:translate(-50%,0) rotate(-35deg) scaleX(.2);opacity:0}
+          15%{opacity:1}100%{transform:translate(40vw,-70vh) rotate(-35deg) scaleX(1);opacity:0}}
         .lt-dot{width:6px;height:6px;border-radius:50%;background:#FFFFFF;flex:0 0 auto}
         @media(prefers-reduced-motion:reduce){
           .lt-meteor,.lt-flare{display:none}
@@ -759,10 +770,11 @@ export default function App(){
       </div>
       {modal&&modal.type==="read"&&
         <LetterModal letter={modal.letter} onClose={closeLetter}
-          onReply={()=>setModal({type:"compose",to:modal.letter.from||partner})}/>}
+          onReply={()=>compose(modal.letter.from||partner)}/>}
       {modal&&modal.type==="compose"&&
         <ComposeSheet C={C} to={modal.to} sending={sending}
-          onClose={()=>setModal(null)} onSend={(txt)=>sendLetter(modal.to,txt,modal.from)}/>}
+          onClose={()=>setModal(null)} onSend={(txt)=>sendLetter(modal.to,txt,modal.from)}
+          onSent={()=>{setModal(null);setToast("별똥별을 보냈어요");}}/>}
       {modal&&modal.type==="box"&&
         <LetterBox C={C} letters={letters} who={who} owners={owners.length>1?owners:[meName,friendName]}
           onPick={(l)=>setModal({type:"read",letter:l})} onClose={()=>setModal(null)}
@@ -882,30 +894,111 @@ function LetterModal({letter,onClose,onReply}){
   );
 }
 
-function ComposeSheet({C,to,onClose,onSend,sending}){
-  const [text,setText]=useState("");
+/* iOS 사파리는 '누른 그 순간'의 focus()에만 키보드를 띄웁니다.
+   그래서 누를 때 숨은 입력칸에 먼저 포커스를 주고(키보드가 열림),
+   작성 화면이 그려지면 실제 입력칸으로 포커스를 옮깁니다(키보드 유지). */
+let kbProxy=null;
+function primeKeyboard(){
+  try{
+    if(!kbProxy){
+      kbProxy=document.createElement("input");
+      kbProxy.setAttribute("aria-hidden","true"); kbProxy.tabIndex=-1;
+      Object.assign(kbProxy.style,{position:"fixed",top:"0",left:"0",width:"1px",height:"1px",opacity:"0",
+        fontSize:"16px",border:"0",padding:"0",pointerEvents:"none"});
+      document.body.appendChild(kbProxy);
+    }
+    kbProxy.focus({preventScroll:true});
+  }catch(e){}
+}
+
+/* 키보드를 뺀 '보이는 화면' 크기 — 하단 버튼을 키보드 바로 위에 붙이는 데 씁니다 */
+function useVisualViewport(){
+  const get=()=>{const v=window.visualViewport;return v?{h:v.height,top:v.offsetTop}:{h:window.innerHeight,top:0};};
+  const [vp,setVp]=useState(get);
+  useEffect(()=>{
+    const v=window.visualViewport; if(!v) return;
+    const on=()=>setVp(get());
+    v.addEventListener("resize",on); v.addEventListener("scroll",on);
+    return()=>{v.removeEventListener("resize",on);v.removeEventListener("scroll",on);};
+  },[]);
+  return vp;
+}
+
+const QUICK_LINES=["오늘도 잘했어!","꾸준한 거 멋있어","내일도 같이 해보자","덕분에 나도 힘이 나"];
+const draftKey=(to)=>"hr_draft_"+to;
+
+/* 별똥별 보내기 — 전체 화면 작성. 열리자마자 입력 상태, 보내기 버튼은 키보드 바로 위 */
+function ComposeSheet({C,to,onClose,onSend,onSent,sending}){
+  const [text,setText]=useState(()=>LS.get(draftKey(to))||"");   // 임시 저장된 글 이어 쓰기
+  const [ask,setAsk]=useState(false);     // 쓰던 글이 있을 때 닫으면 한 번 묻기
+  const [sent,setSent]=useState(false);   // 보낸 뒤 별똥별 연출
   const ref=useRef(null);
-  useEffect(()=>{const t=setTimeout(()=>ref.current&&ref.current.focus(),320);return()=>clearTimeout(t);},[]);
-  const left=300-text.length;
-  return (
-    <div className="lt-wrap" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="lt-scrim" style={{animationDelay:"0ms"}}/>
-      <div className="lt-stack lt-now" onClick={e=>e.stopPropagation()}>
-        <div className="glass" style={{padding:"18px 16px"}}>
-          <p style={{fontSize:13,color:"#9A9CAA",textAlign:"center",margin:"0 0 14px"}}>
-            {to}에게
-          </p>
-          <textarea id="lt-text" ref={ref} className="lt-ta" value={text} maxLength={300}
-            onChange={e=>setText(e.target.value)} placeholder="한 줄이면 충분해요"/>
-          {left<=50&&<div style={{textAlign:"right",fontSize:12,color:"#9A9CAA",marginTop:9}}>{left}자 남음</div>}
+  const vp=useVisualViewport();
+  useLayoutEffect(()=>{ const el=ref.current; if(!el) return; el.focus({preventScroll:true}); const n=el.value.length; el.setSelectionRange(n,n); },[]);
+  useEffect(()=>{ LS.set(draftKey(to),text); },[to,text]);
+  useEffect(()=>{ const o=document.body.style.overflow; document.body.style.overflow="hidden"; return()=>{document.body.style.overflow=o;}; },[]);
+  useEffect(()=>{
+    const esc=(e)=>{if(e.key==="Escape")tryClose();};
+    document.addEventListener("keydown",esc); return()=>document.removeEventListener("keydown",esc);
+  });
+  const tryClose=()=>{ if(sent) return; if(text.trim()) setAsk(true); else { LS.set(draftKey(to),""); onClose(); } };
+  const send=async()=>{
+    const ok=await onSend(text.trim());
+    if(!ok) return;
+    LS.set(draftKey(to),"");
+    if(ref.current) ref.current.blur();
+    setSent(true);
+    setTimeout(onSent, reduceMotion?0:900);
+  };
+  const addLine=(t)=>{ setText(v=>v.trim()?`${v.replace(/\s+$/,"")} ${t}`:t); ref.current&&ref.current.focus(); };
+  const left=300-text.length, canSend=!!text.trim()&&!sending&&!sent;
+
+  return(
+    <div role="dialog" aria-modal="true" aria-label={`${to}에게 편지 쓰기`}
+      style={{position:"fixed",left:0,right:0,top:vp.top,height:vp.h,zIndex:100,background:C.bg,
+        display:"flex",flexDirection:"column",animation:reduceMotion?"none":"fade .18s ease",
+        opacity:sent?0:1,transition:sent?"opacity .3s ease .55s":"none"}}>
+      <div style={{width:"100%",maxWidth:600,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column",padding:"0 16px"}}>
+        {/* 상단: 닫기는 잘 보이는 자리·크기로 */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
+          <button className="btn" onClick={tryClose}
+            style={{...BTN_FILL,height:40,padding:"0 16px",fontSize:15}}>취소</button>
+          {left<=50&&<span className="mono" style={{fontSize:13,color:left<=10?"#E8C879":C.sub}}>{left}자 남음</span>}
         </div>
-        <div className="lt-acts">
-          <button className="lt-a1" disabled={!text.trim()||sending}
-            style={{opacity:(!text.trim()||sending)?0.45:1}}
-            onClick={()=>onSend(text.trim())}>{sending?"보내는 중…":"별똥별로 보내기"}</button>
-          <button className="lt-a2" onClick={onClose}>닫기</button>
+        <h2 style={{fontSize:22,fontWeight:800,letterSpacing:"-0.02em",margin:"12px 0 14px"}}>{to}에게</h2>
+        {/* 빠른 문구 — 누르면 입력칸에 이어 붙음 */}
+        <div className="pa-row" style={{display:"flex",gap:8,overflowX:"auto",flex:"0 0 auto",paddingBottom:2,marginBottom:12}}>
+          {QUICK_LINES.map(t=>(
+            <button key={t} className="btn" onMouseDown={e=>e.preventDefault()} onClick={()=>addLine(t)}
+              style={{...BTN_FILL,flex:"0 0 auto",padding:"8px 14px",fontSize:14,fontWeight:500}}>{t}</button>
+          ))}
         </div>
+        {/* 상자 속 상자 없이, 화면 자체가 종이처럼 */}
+        <textarea ref={ref} value={text} maxLength={300} onChange={e=>setText(e.target.value)}
+          placeholder="한 줄이면 충분해요" aria-label="편지 내용"
+          style={{flex:1,minHeight:80,width:"100%",resize:"none",background:"transparent",border:"none",outline:"none",
+            color:C.ink,fontSize:17,lineHeight:1.7,fontFamily:"inherit",padding:"4px 0"}}/>
       </div>
+      {/* 하단 고정 — 키보드가 열리면 그 바로 위 */}
+      <div style={{flex:"0 0 auto",background:C.bg,padding:"10px 16px calc(10px + env(safe-area-inset-bottom))"}}>
+        <button className="btn" disabled={!canSend} onMouseDown={e=>e.preventDefault()} onClick={send}
+          style={{...BTN_PRIMARY,display:"block",width:"100%",maxWidth:568,margin:"0 auto",padding:"15px 0",fontSize:16,
+            ...(canSend||sent?{}:{background:"#23262F",color:"#6B6E7A",cursor:"default"})}}>
+          {sent?"보냈어요":sending?"보내는 중…":"별똥별로 보내기"}
+        </button>
+      </div>
+      {sent&&!reduceMotion&&<div className="send-meteor"/>}
+      {ask&&
+        <div onClick={()=>setAsk(false)} style={{position:"absolute",inset:0,background:"rgba(4,5,10,.88)",
+          display:"flex",alignItems:"flex-end",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:420,background:"#1A1D26",borderRadius:20,padding:"18px 16px"}}>
+            <p style={{fontSize:16,fontWeight:700,margin:"2px 0 6px"}}>작성 중인 편지가 있어요</p>
+            <p style={{fontSize:14,color:C.sub,margin:"0 0 16px",lineHeight:1.6}}>임시 저장해 두면 다음에 이어서 쓸 수 있어요.</p>
+            <button className="btn" onClick={()=>onClose()} style={{...BTN_PRIMARY,width:"100%",padding:"14px 0",fontSize:15}}>임시 저장하고 닫기</button>
+            <button className="btn" onClick={()=>{LS.set(draftKey(to),"");onClose();}}
+              style={{...BTN_FILL,width:"100%",padding:"14px 0",fontSize:15,marginTop:8}}>삭제하고 닫기</button>
+          </div>
+        </div>}
     </div>
   );
 }
