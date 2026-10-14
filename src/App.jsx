@@ -924,81 +924,62 @@ function useVisualViewport(){
   return vp;
 }
 
-const QUICK_LINES=["오늘도 잘했어!","꾸준한 거 멋있어","내일도 같이 해보자","덕분에 나도 힘이 나"];
-const draftKey=(to)=>"hr_draft_"+to;
-
-/* 별똥별 보내기 — 전체 화면 작성. 열리자마자 입력 상태, 보내기 버튼은 키보드 바로 위 */
+/* 별똥별 보내기 — 가운데 모달(기존보다 넓게). 열리자마자 입력 상태, 보내기 버튼은 키보드 바로 위에 떠 있음 */
 function ComposeSheet({C,to,onClose,onSend,onSent,sending}){
-  const [text,setText]=useState(()=>LS.get(draftKey(to))||"");   // 임시 저장된 글 이어 쓰기
-  const [ask,setAsk]=useState(false);     // 쓰던 글이 있을 때 닫으면 한 번 묻기
+  const [text,setText]=useState("");
   const [sent,setSent]=useState(false);   // 보낸 뒤 별똥별 연출
   const ref=useRef(null);
   const vp=useVisualViewport();
-  useLayoutEffect(()=>{ const el=ref.current; if(!el) return; el.focus({preventScroll:true}); const n=el.value.length; el.setSelectionRange(n,n); },[]);
-  useEffect(()=>{ LS.set(draftKey(to),text); },[to,text]);
+  useLayoutEffect(()=>{ ref.current&&ref.current.focus({preventScroll:true}); },[]);
   useEffect(()=>{ const o=document.body.style.overflow; document.body.style.overflow="hidden"; return()=>{document.body.style.overflow=o;}; },[]);
   useEffect(()=>{
-    const esc=(e)=>{if(e.key==="Escape")tryClose();};
+    const esc=(e)=>{if(e.key==="Escape"&&!sent)onClose();};
     document.addEventListener("keydown",esc); return()=>document.removeEventListener("keydown",esc);
   });
-  const tryClose=()=>{ if(sent) return; if(text.trim()) setAsk(true); else { LS.set(draftKey(to),""); onClose(); } };
   const send=async()=>{
     const ok=await onSend(text.trim());
     if(!ok) return;
-    LS.set(draftKey(to),"");
     if(ref.current) ref.current.blur();
     setSent(true);
     setTimeout(onSent, reduceMotion?0:900);
   };
-  const addLine=(t)=>{ setText(v=>v.trim()?`${v.replace(/\s+$/,"")} ${t}`:t); ref.current&&ref.current.focus(); };
   const left=300-text.length, canSend=!!text.trim()&&!sending&&!sent;
+  const W={width:"100%",maxWidth:440};
 
   return(
+    /* 키보드를 뺀 '보이는 화면' 안에 모달 + 하단 버튼을 배치 */
     <div role="dialog" aria-modal="true" aria-label={`${to}에게 편지 쓰기`}
-      style={{position:"fixed",left:0,right:0,top:vp.top,height:vp.h,zIndex:100,background:C.bg,
-        display:"flex",flexDirection:"column",animation:reduceMotion?"none":"fade .18s ease",
-        opacity:sent?0:1,transition:sent?"opacity .3s ease .55s":"none"}}>
-      <div style={{width:"100%",maxWidth:600,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column",padding:"0 16px"}}>
-        {/* 상단: 닫기는 잘 보이는 자리·크기로 */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
-          <button className="btn" onClick={tryClose}
-            style={{...BTN_FILL,height:40,padding:"0 16px",fontSize:15}}>취소</button>
-          {left<=50&&<span className="mono" style={{fontSize:13,color:left<=10?"#E8C879":C.sub}}>{left}자 남음</span>}
+      style={{position:"fixed",left:0,right:0,top:vp.top,height:vp.h,zIndex:100,display:"flex",flexDirection:"column",
+        alignItems:"center",padding:"16px 16px 0",opacity:sent?0:1,transition:sent?"opacity .3s ease .55s":"none"}}>
+      {/* 바깥을 눌러 닫기 — 쓰던 글이 있으면 실수로 날리지 않도록 무시 */}
+      <div onClick={()=>{if(!text.trim()&&!sent)onClose();}}
+        style={{position:"absolute",inset:0,background:"rgba(4,5,10,.86)",animation:reduceMotion?"none":"fade .18s ease"}}/>
+      {/* 배치용 래퍼는 클릭을 통과시켜, 모달 바깥을 누르면 뒤의 어두운 면이 받도록 */}
+      <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",...W,position:"relative",pointerEvents:"none"}}>
+        <div style={{...W,maxHeight:"100%",display:"flex",flexDirection:"column",background:"#1A1D26",borderRadius:20,pointerEvents:"auto",
+          padding:"18px 16px",animation:reduceMotion?"none":"fade .18s ease"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:12}}>
+            <h2 style={{fontSize:20,fontWeight:800,letterSpacing:"-0.02em",margin:0}}>{to}에게</h2>
+            <button className="btn" onClick={()=>{if(!sent)onClose();}}
+              style={{...BTN_FILL,height:36,padding:"0 14px",fontSize:14,background:"#262A34"}}>취소</button>
+          </div>
+          {/* 상자 속 상자 없이 — 모달 면 위에 바로 씀 */}
+          <textarea ref={ref} value={text} maxLength={300} onChange={e=>setText(e.target.value)}
+            placeholder="한 줄이면 충분해요" aria-label="편지 내용"
+            style={{flex:1,minHeight:140,width:"100%",resize:"none",background:"transparent",border:"none",outline:"none",
+              color:C.ink,fontSize:17,lineHeight:1.7,fontFamily:"inherit",padding:0}}/>
+          {left<=50&&<div className="mono" style={{textAlign:"right",fontSize:13,color:left<=10?"#E8C879":C.sub,marginTop:6}}>{left}자 남음</div>}
         </div>
-        <h2 style={{fontSize:22,fontWeight:800,letterSpacing:"-0.02em",margin:"12px 0 14px"}}>{to}에게</h2>
-        {/* 빠른 문구 — 누르면 입력칸에 이어 붙음 */}
-        <div className="pa-row" style={{display:"flex",gap:8,overflowX:"auto",flex:"0 0 auto",paddingBottom:2,marginBottom:12}}>
-          {QUICK_LINES.map(t=>(
-            <button key={t} className="btn" onMouseDown={e=>e.preventDefault()} onClick={()=>addLine(t)}
-              style={{...BTN_FILL,flex:"0 0 auto",padding:"8px 14px",fontSize:14,fontWeight:500}}>{t}</button>
-          ))}
-        </div>
-        {/* 상자 속 상자 없이, 화면 자체가 종이처럼 */}
-        <textarea ref={ref} value={text} maxLength={300} onChange={e=>setText(e.target.value)}
-          placeholder="한 줄이면 충분해요" aria-label="편지 내용"
-          style={{flex:1,minHeight:80,width:"100%",resize:"none",background:"transparent",border:"none",outline:"none",
-            color:C.ink,fontSize:17,lineHeight:1.7,fontFamily:"inherit",padding:"4px 0"}}/>
       </div>
-      {/* 하단 고정 — 키보드가 열리면 그 바로 위 */}
-      <div style={{flex:"0 0 auto",background:C.bg,padding:"10px 16px calc(10px + env(safe-area-inset-bottom))"}}>
+      {/* 보내기 — 화면 아래(키보드가 열리면 그 바로 위)에 떠 있는 버튼 */}
+      <div style={{...W,position:"relative",flex:"0 0 auto",padding:"12px 0 calc(12px + env(safe-area-inset-bottom))",pointerEvents:"none"}}>
         <button className="btn" disabled={!canSend} onMouseDown={e=>e.preventDefault()} onClick={send}
-          style={{...BTN_PRIMARY,display:"block",width:"100%",maxWidth:568,margin:"0 auto",padding:"15px 0",fontSize:16,
+          style={{...BTN_PRIMARY,display:"block",width:"100%",padding:"15px 0",fontSize:16,pointerEvents:"auto",
             ...(canSend||sent?{}:{background:"#23262F",color:"#6B6E7A",cursor:"default"})}}>
           {sent?"보냈어요":sending?"보내는 중…":"별똥별로 보내기"}
         </button>
       </div>
       {sent&&!reduceMotion&&<div className="send-meteor"/>}
-      {ask&&
-        <div onClick={()=>setAsk(false)} style={{position:"absolute",inset:0,background:"rgba(4,5,10,.88)",
-          display:"flex",alignItems:"flex-end",justifyContent:"center",padding:16}}>
-          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:420,background:"#1A1D26",borderRadius:20,padding:"18px 16px"}}>
-            <p style={{fontSize:16,fontWeight:700,margin:"2px 0 6px"}}>작성 중인 편지가 있어요</p>
-            <p style={{fontSize:14,color:C.sub,margin:"0 0 16px",lineHeight:1.6}}>임시 저장해 두면 다음에 이어서 쓸 수 있어요.</p>
-            <button className="btn" onClick={()=>onClose()} style={{...BTN_PRIMARY,width:"100%",padding:"14px 0",fontSize:15}}>임시 저장하고 닫기</button>
-            <button className="btn" onClick={()=>{LS.set(draftKey(to),"");onClose();}}
-              style={{...BTN_FILL,width:"100%",padding:"14px 0",fontSize:15,marginTop:8}}>삭제하고 닫기</button>
-          </div>
-        </div>}
     </div>
   );
 }
