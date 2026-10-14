@@ -629,9 +629,9 @@ export default function App(){
           .sk,.ld-bg,.ld-msg{animation:none}.ld-line{animation:none;stroke-dashoffset:0;opacity:.6}.ld-star{animation:none;opacity:1}}
         .wrap{max-width:600px;margin:0 auto;padding:0 18px 96px}
         .navbar{position:sticky;top:0;z-index:10;background:rgba(4,5,14,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
-        /* 글래스 테두리 — 왼쪽 위가 밝고 옆으로 갈수록 옅어졌다가 오른쪽 아래에서 다시 살짝 빛남 */
+        /* 글래스 테두리 — iOS처럼 거의 고른 밝기, 위쪽만 아주 살짝 더 밝게 */
         .gl::before,.glass::before,.sky::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;z-index:1;
-          background:linear-gradient(140deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.1) 28%,rgba(255,255,255,.03) 58%,rgba(255,255,255,.16) 100%);
+          background:linear-gradient(170deg,rgba(255,255,255,.2) 0%,rgba(255,255,255,.13) 45%,rgba(255,255,255,.11) 75%,rgba(255,255,255,.15) 100%);
           -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
           mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
         .twk{animation:twk 4.5s ease-in-out infinite}@keyframes twk{0%,100%{opacity:1}50%{opacity:.45}}
