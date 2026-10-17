@@ -524,9 +524,32 @@ export default function App(){
      각 칸이 '언제의 기록'인지 화면에서 바로 알 수 있도록,
      칸마다 그 주의 시작일·달성 횟수·목표를 함께 담아서 넘깁니다. */
   const curMon=mondayOf(fromISO(today));
-  const curMonISO=toISO(curMon);
-  const prevMonISO=toISO(addDays(curMon,-7));
   const WEEKS=6;   // 회고 창: 최근 6주
+
+  /* ── 페이스: 지난주 이맘때 vs 지금 (같은 요일까지만 공정하게 비교) ── */
+  const paceOf=(list)=>{
+    if(!list.length) return null;
+    const todayIdx=(fromISO(today).getDay()+6)%7;                 // 월=0 … 일=6
+    const dayCount=(iso)=>list.reduce((n,h)=>n+(isLogged(h.id,iso)?1:0),0);
+    const cumul=(mon)=>{let c=0;return weekDatesFrom(mon).map(d=>(c+=dayCount(d)));};
+    const cur=cumul(curMon), prev=cumul(addDays(curMon,-7));
+    const now=cur[todayIdx], then=prev[todayIdx];
+    /* 다음 한 걸음: 오늘 아직 안 했고 이번 주 목표가 남은 습관 중 남은 횟수가 가장 적은 것 */
+    const curWeek=weekDatesFrom(curMon);
+    const left=(h)=>tgtOf(h)-curWeek.reduce((n,d)=>n+(isLogged(h.id,d)?1:0),0);
+    const next=list.filter(h=>!isLogged(h.id,today)&&left(h)>0).sort((a,b)=>left(a)-left(b))[0]||null;
+    /* 이 속도면 채울 수 있는 목표 수 */
+    const onTrack=list.filter(h=>{const wc=tgtOf(h)-left(h);return wc/(todayIdx+1)*7>=tgtOf(h);}).length;
+    /* 최고 기록 주 (불러온 1년 안, 이번 주 제외) */
+    let best=0,bestMon=null;
+    for(let i=1;i<=52;i++){
+      const mon=addDays(curMon,-7*i);
+      const tot=weekDatesFrom(mon).reduce((n,d)=>n+dayCount(d),0);
+      if(tot>best){best=tot;bestMon=toISO(mon);}
+    }
+    return {todayIdx,cur,prev,now,then,diff:now-then,next,onTrack,total:list.length,best,bestMon,
+      projected:now/(todayIdx+1)*7};
+  };
   const chronicleOf=(h)=>{
     const t=tgtOf(h);
     const cells=Array.from({length:WEEKS},(_,i)=>{
@@ -540,14 +563,6 @@ export default function App(){
     return {cells,recent:cells.filter(c=>c.complete).length,window:cells.filter(c=>!c.pre).length};
   };
 
-  /* 특정 주(월~일)의 별 상태 — 지난주 별자리를 다시 그릴 때 씁니다 */
-  const starsAtWeek=(list,monISO)=>{
-    const wd=weekDatesFrom(fromISO(monISO));
-    return list.map(h=>{
-      const c=wd.reduce((n,d)=>n+(isLogged(h.id,d)?1:0),0),t=tgtOf(h);
-      return {id:h.id,name:h.name,emoji:emojiOf(h),ratio:Math.min(1,c/t),done:c,target:t,complete:c>=t};
-    });
-  };
 
   /* 현재 사람의 별 데이터 (노션 모드에서는 상대 쪽도 실제 기록으로 계산) */
   const starOf=(h)=>{const c=weekCount(h.id),t=tgtOf(h);return {id:h.id,name:h.name,emoji:emojiOf(h),ratio:Math.min(1,c/t),done:c,target:t,complete:c>=t};};
@@ -846,12 +861,8 @@ export default function App(){
 
         {!booting&&tab==="review"&&(
           <div className="fade">
-            {/* 지난주 → 이번 주 별자리 변화 (작은 기록 카드) */}
-            <WeekShift C={C} prevMonISO={prevMonISO} curMonISO={curMonISO}
-              meName={meName} friendName={friendName}
-              prevMe={starsAtWeek(myHabits.filter(h=>startedBy(h,prevMonISO)),prevMonISO)} curMe={myStars}
-              prevFr={isNotion?starsAtWeek(friendHabits.filter(h=>startedBy(h,prevMonISO)),prevMonISO):[]}
-              curFr={frStars}/>
+            {/* 지난주 이맘때 vs 지금 — 과거의 나를 이기고 싶게 */}
+            <PaceCard C={C} p={paceOf(activeHabits)} color={activeColor}/>
 
             {(isNotion||person==="me")
               ? activeHabits.length>0&&
@@ -1302,72 +1313,60 @@ function CheerCard({C,stars,name,onPraise}){
 }
 
 
-/* ── 지난주 → 이번 주 별자리 변화 ─────────────────────────
-   한 주는 월요일에 열려 일요일 23:59에 닫힙니다.
-   말로 설명하는 대신 그림으로 보여줍니다 —
-   지난주는 실선(확정), 이번 주는 점선(진행 중),
-   썸네일 아래 띠의 길이가 그 주에 채운 목표 비율입니다. */
-function WeekShift({C,prevMonISO,curMonISO,meName,friendName,prevMe,curMe,prevFr,curFr}){
-  const rows=[
-    {name:meName||"초록",color:GREEN,past:prevMe,now:curMe},
-    {name:friendName||"소운",color:VIOLET,past:prevFr,now:curFr},
-  ].filter(r=>r.past.length||r.now.length);
-  if(!rows.length) return null;
+/* ── 페이스 카드: 지난주 이맘때 vs 지금 ─────────────────────
+   ① 같은 요일까지만 비교한 헤드라인 숫자  ② 월→일 누적 선(지난주 점선 / 이번 주 실선)
+   ③ 오늘 할 한 걸음  ④ 최고 기록에 가까울 때만 기록 안내 */
+const DAYS=["월","화","수","목","금","토","일"];
+function PaceCard({C,p,color}){
+  if(!p) return null;
+  const {todayIdx,cur,prev,now,then,diff,next,onTrack,total,best,bestMon,projected}=p;
+  const W=560,H=150,PX=24,PT=18,PB=14;
+  const max=Math.max(prev[6],now,best?Math.min(best,Math.max(prev[6],now)*1.4):0,1);
+  const X=(i)=>PX+(W-PX*2)*i/6, Y=(v)=>PT+(H-PT-PB)*(1-v/max);
+  const pts=(arr,n)=>arr.slice(0,n).map((v,i)=>`${X(i)},${Y(v)}`).join(" ");
 
-  /* 날짜 범위 줄과 가운데 화살표는 걷어냈습니다 — 두 칸의 순서만으로 읽힙니다 */
-  const head=(t,now)=>(
-    <div style={{fontSize:13,fontWeight:700,color:now?C.ink:C.sub}}>{t}</div>
-  );
+  const head=diff>0?<>지난주 이맘때보다 <b style={{color:"var(--acc)"}}>+{diff}번</b></>
+    :diff===0?<>지난주 이맘때와 <b style={{color:"var(--acc)"}}>같아요</b></>
+    :<>지난주 이맘때까지 <b style={{color:"var(--acc)"}}>{-diff}번</b> 남았어요</>;
+  const step=next
+    ? (diff>=0?`오늘 ‘${next.name}’ 하면 +${diff+1}번으로 앞서가요`
+      :diff===-1?`오늘 ‘${next.name}’ 하면 지난주와 같아져요`
+      :`오늘 ‘${next.name}’ 하면 ${-diff-1}번 차이로 좁혀져요`)
+    : `이 속도면 이번 주 목표 ${onTrack}/${total}개를 채울 수 있어요`;
+  const wk=bestMon&&weekOfMonth(bestMon);
+  /* 기록이 너무 작으면(3번 미만) 의미가 없어서 숨김. 같으면 '한 번만 더' */
+  const bestLine=best>=3&&(now>best?"최고 기록 경신 중 ✦"
+    :now===best?"한 번만 더 하면 최고 기록이에요 ✦"
+    :projected>=best*0.8?`최고 기록 ${wk.m}월 ${wk.w}주차 ${best}번 · ${best-now}번 남음`:null);
 
-  /* '오늘' 탭의 밤하늘 패널과 같은 비율(560:296)·같은 옅은 외곽선 — 두 탭 첫 화면의 높이가 맞도록 */
   return(
-    <div className="gl" style={{...GLASS,borderRadius:20,
-      aspectRatio:"560/296",padding:"18px 16px",marginBottom:60,
-      display:"grid",gridTemplateColumns:"auto 1fr 1fr",gridTemplateRows:`auto repeat(${rows.length},minmax(0,1fr))`,
-      columnGap:10,rowGap:8,alignItems:"center"}}>
-      <span/>
-      {head("지난주")}
-      {head("이번 주",true)}
+    <div className="gl" style={{...GLASS,borderRadius:20,aspectRatio:"560/296",padding:"18px 16px",marginBottom:60,
+      display:"flex",flexDirection:"column"}}>
+      <div style={{fontSize:20,fontWeight:700,letterSpacing:"-0.01em",lineHeight:1.35}}>{head}</div>
+      <div className="mono" style={{fontSize:13,color:C.sub,marginTop:4}}>이번 주 {now}번 · 지난주 같은 때 {then}번</div>
 
-      {rows.map(r=>(
-        <React.Fragment key={r.name}>
-          <span style={{fontSize:13,fontWeight:700,color:C.ink,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,
-            justifySelf:"start",maxWidth:56,overflow:"hidden"}}>
-            {r.name}</span>
-          <MiniSky C={C} stars={r.past} color={r.color} past/>
-          <MiniSky C={C} stars={r.now} color={r.color}/>
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
-
-/* 작은 별자리 썸네일 — 큰 밤하늘과 달리 글로우 없이 담백하게.
-   아래쪽 띠가 그 주에 채운 목표 비율입니다. */
-function MiniSky({C,stars,color,past}){
-  const W=120,H=64;
-  const pts=buildPoints(stars,[W/2,H/2],0.6);
-  const seq=connOrder(stars.length).map(i=>({s:stars[i],p:pts[i]})).filter(x=>x.p);
-  const done=stars.filter(s=>s.complete).length;
-  const ratio=stars.length?done/stars.length:0;
-  /* 칸 높이에 맞춰 늘어나도록: 바탕은 div, 별은 비율 유지 SVG, 아래 띠는 HTML */
-  return(
-    <div title={`${done}/${stars.length} 완성`} style={{position:"relative",alignSelf:"stretch",minHeight:0,borderRadius:10,overflow:"hidden",
-      background:"radial-gradient(120% 100% at 50% 40%,rgba(18,18,52,.8) 0%,rgba(6,6,20,.9) 70%,rgba(3,3,10,.95) 100%)",opacity:past?0.8:1}}>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
-        style={{position:"absolute",left:0,top:0,width:"100%",height:"calc(100% - 12px)"}}>
-        <ellipse cx={W/2} cy={H/2} rx="50" ry="30" fill={`url(#neb-${toneKey(color)})`}/>
-        <ConstLines seq={seq} scale={0.35}/>
-        {stars.map((s,i)=>{const p=pts[i]; return p&&<GlowStar key={s.id} x={p.x} y={p.y} ratio={s.ratio} color={color} complete={s.complete} scale={0.4}/>;})}
-      </svg>
-      {/* 이 주에 채운 목표 비율 */}
-      <div style={{position:"absolute",left:9,right:9,bottom:8,height:3,borderRadius:2,background:"rgba(255,255,255,.08)"}}>
-        {ratio>0&&<div style={{width:`${ratio*100}%`,height:"100%",borderRadius:2,background:color,opacity:past?0.75:1,boxShadow:`0 0 8px ${color}88`}}/>}
+      <div style={{flex:1,minHeight:96,display:"flex",flexDirection:"column",justifyContent:"flex-end",marginTop:10}}>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{display:"block",overflow:"visible"}} aria-hidden="true">
+          {/* 지난주: 옅은 점선 (한 주 전체) */}
+          <polyline points={pts(prev,7)} fill="none" stroke="#fff" strokeOpacity=".35" strokeWidth="2"
+            strokeDasharray="5 6" strokeLinecap="round" strokeLinejoin="round"/>
+          {/* 이번 주: 강조색 실선 (오늘까지) */}
+          <polyline points={pts(cur,todayIdx+1)} fill="none" stroke={color} strokeWidth="3"
+            strokeLinecap="round" strokeLinejoin="round" style={{filter:`drop-shadow(0 0 6px ${color}88)`}}/>
+          {/* 오늘 위치에 빛나는 별 */}
+          <GlowStar x={X(todayIdx)} y={Y(now)} ratio={1} color={color} complete scale={1}/>
+        </svg>
+        <div style={{display:"flex",justifyContent:"space-between",padding:`6px ${PX/W*100}% 0`,fontSize:12}}>
+          {DAYS.map((d,i)=><span key={d} style={{width:0,display:"flex",justifyContent:"center",
+            color:i===todayIdx?C.ink:C.sub,fontWeight:i===todayIdx?700:500,opacity:i>todayIdx?.5:1}}>{d}</span>)}
+        </div>
       </div>
+
+      <div style={{marginTop:14,fontSize:14,lineHeight:1.5,color:C.ink,wordBreak:"keep-all"}}>{step}</div>
+      {bestLine&&<div style={{marginTop:4,fontSize:13,color:"var(--acc)",fontWeight:600}}>{bestLine}</div>}
     </div>
   );
 }
-
 
 /* ── 목표별 회고 ── */
 const BAR_GAP=5;
