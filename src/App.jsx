@@ -154,8 +154,8 @@ function NightBG({vivid=false}){
     <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
       background:vivid?"linear-gradient(180deg,#03040B 0%,#070820 45%,#120F3A 80%,#1C1650 100%)":"transparent"}}>
       <svg width="100%" height="100%" style={{position:"absolute",inset:0}}>
-        {stars.map((t,i)=><circle key={i} className={i%3===0&&!reduceMotion?"twk":""} cx={`${t.x}%`} cy={`${t.y}%`} r={t.r}
-          fill="#fff" opacity={vivid?t.o:t.o*.55} style={{animationDelay:`${t.d}s`}}/>)}
+        {stars.map((t,i)=><circle key={i} className={vivid&&i%3===0&&!reduceMotion?"twk":""} cx={`${t.x}%`} cy={`${t.y}%`} r={vivid?t.r:t.r*.75}
+          fill="#fff" opacity={vivid?t.o:t.o*.22} style={{animationDelay:`${t.d}s`}}/>)}
       </svg>
     </div>
   );
@@ -284,6 +284,7 @@ export default function App(){
   const [meName,setMeName]=useState(()=>cache0?.hs.me||DEMO_ME_NAME);        // 노션에서 '나'로 볼 소유자 값
   const [owners,setOwners]=useState(()=>Array.isArray(cache0?.hs.owners)?cache0.hs.owners:[]);   // 노션 DB에 등장하는 소유자 목록
   const [ownerWarn,setOwnerWarn]=useState("");            // 소유자 속성을 못 찾았을 때 안내
+  const [habitsDb,setHabitsDb]=useState(()=>cache0?.hs.habitsDb||"");   // '해빗 수정하기'가 열 노션 DB
   const [staleWarn,setStaleWarn]=useState("");            // 저장해 둔 데이터를 보여주는 중인데 노션 연결이 실패했을 때
   const hsRef=useRef(cache0?.hs||null);                   // 캐시에 함께 저장할 습관 응답
   const olderDone=useRef(false);                          // 1년 치 이전 기록은 세션당 한 번만
@@ -320,6 +321,7 @@ export default function App(){
     /* 직전이 로컬 모드였다면 그 기록은 섞지 않음 */
     setLogs(prev=>withPending(mergeLogs(sync.mode==="local"?{}:prev,logsToMap(ls?.logs),{from,to}),started));
     setMeName(hs.me||DEMO_ME_NAME);
+    if(hs.habitsDb) setHabitsDb(hs.habitsDb);
     setOwners(Array.isArray(hs.owners)?hs.owners:[]);
     setOwnerWarn(
       !hs.ownerProp
@@ -454,6 +456,7 @@ export default function App(){
      로컬 모드: 소유자 정보가 없으므로 전부 내 것 + 상대는 예시 데이터
   ──────────────────────────────────────────────────────── */
   const isNotion=sync.mode==="notion";
+  const habitsUrl=`https://www.notion.so/${String(habitsDb||"19760626b3fd4df8bc4cf8c651701e0f").replace(/-/g,"")}`;
   const friendName=isNotion?(owners.find(o=>o!==meName)||DEMO_FRIEND_NAME):DEMO_FRIEND_NAME;
   /* 소유자가 비어 있는 습관은 내 것으로 봅니다 (화면에서 사라지지 않도록) */
   const myHabits=sortHabits(isNotion?habits.filter(h=>(h.owner||meName)===meName):habits);
@@ -595,7 +598,7 @@ export default function App(){
   const C={bg:"transparent",surface:"rgba(17,19,46,.62)",surface2:"rgba(255,255,255,.08)",ink:"#EEEDF7",sub:"#A3A2BD",line:"rgba(255,255,255,.12)",lineSoft:"rgba(255,255,255,.08)"};
 
   return (
-    <div style={{...accentVars(person==="me"?GREEN:VIOLET),background:"radial-gradient(120% 60% at 50% 0%,rgba(40,36,90,.22) 0%,rgba(0,0,0,0) 60%),linear-gradient(180deg,#040409 0%,#06060E 55%,#0A0918 100%)",minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
+    <div style={{...accentVars(person==="me"?GREEN:VIOLET),background:"radial-gradient(120% 60% at 50% 0%,rgba(40,36,90,.14) 0%,rgba(0,0,0,0) 60%),linear-gradient(180deg,#040409 0%,#06060E 55%,#0A0918 100%)",minHeight:"100vh",maxWidth:"100%",overflowX:"clip",color:C.ink,fontFamily:"'Pretendard',ui-sans-serif,system-ui,sans-serif"}}>
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
         *{box-sizing:border-box}
@@ -821,6 +824,14 @@ export default function App(){
                 <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8}}><StarIcon size={18}/>{(person==="me"?partner:meName)}에게 별똥별 보내기</span>
               </button>}
 
+            {/* 습관 목록은 노션에서 관리 — 습관 DB를 바로 엽니다 (노션 앱이 있으면 앱으로) */}
+            {isNotion&&
+              <a href={habitsUrl} target="_blank" rel="noopener noreferrer"
+                style={{display:"block",width:"fit-content",margin:"14px auto 0",padding:"8px 12px",fontSize:14,fontWeight:500,
+                  color:C.sub,textDecoration:"underline",textUnderlineOffset:3,textDecorationColor:"rgba(255,255,255,.25)"}}>
+                해빗 수정하기
+              </a>}
+
             {/* 노션 모드에서는 목록을 노션에서 관리하므로, 눌러도 안내만 나오던 버튼을 감춥니다 */}
             {!isNotion&&<>
               <button className="btn" onClick={()=>setShowManage(s=>!s)}
@@ -842,16 +853,20 @@ export default function App(){
               prevFr={isNotion?starsAtWeek(friendHabits.filter(h=>startedBy(h,prevMonISO)),prevMonISO):[]}
               curFr={frStars}/>
 
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              {(isNotion||person==="me")
-                ? activeHabits.map(h=>(
+            {(isNotion||person==="me")
+              ? activeHabits.length>0&&
+                /* 목표별 회고 — 카드 하나 안에 습관을 차례로, 주차 레이블은 맨 아래 한 번만 */
+                <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",display:"flex",flexDirection:"column",gap:24}}>
+                  {activeHabits.map(h=>(
                     <ChronicleRow key={h.id} h={h} C={C} col={activeColor} d={chronicleOf(h)}/>
-                  ))
-                : sortHabits(FRIEND_HABITS).map(h=>(
+                  ))}
+                  <WeekLabels C={C} cells={chronicleOf(activeHabits[0]).cells}/>
+                </div>
+              : <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                  {sortHabits(FRIEND_HABITS).map(h=>(
                     <FriendChronicleRow key={h.id} h={h} C={C} col={VIOLET}/>
-                  ))
-              }
-            </div>
+                  ))}
+                </div>}
             {personSwitch}
           </div>
         )}
@@ -930,17 +945,17 @@ function LoadingView({C,tab}){
   );
 }
 
-/* 스플래시 — 밤하늘 위에 인사가 한 줄씩 떠오름: "소운아" → "오늘도 고생했어" (문구는 5개 중 하나) */
+/* 스플래시 — 밤하늘 위에 인사가 한 줄씩 떠오름: "소운아," → "오늘도 수고 많았어" (문구는 5개 중 하나) */
 const callName=(n)=>{const c=n.charCodeAt(n.length-1);return c>=0xAC00&&c<=0xD7A3&&(c-0xAC00)%28!==0?`${n}아`:`${n}야`;};
-const SPLASH_LINES=["오늘도 고생했어","오늘도 반가워","천천히 가도 괜찮아","오늘의 별을 켜볼까?","어제보다 한 걸음 더"];
+const SPLASH_LINES=["오늘도 수고 많았어","오늘 하루는 어땠어?","왔구나, 기다리고 있었어","천천히 해도 괜찮아","오늘도 반가워"];
 function Splash({out,name,color}){
   const [line]=useState(()=>SPLASH_LINES[Math.floor(Math.random()*SPLASH_LINES.length)]);   // 열 때마다 하나씩 돌아가며
   return(
     <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:200,
       opacity:out?0:1,transition:reduceMotion?"none":"opacity .5s ease",pointerEvents:out?"none":"auto"}}>
       <NightBG vivid/>
-      <div style={{position:"absolute",left:28,right:28,bottom:"16%",fontSize:32,fontWeight:800,lineHeight:1.3,letterSpacing:"-0.02em"}}>
-        <div className="sp-line" style={{animationDelay:".25s",color,textShadow:`0 0 24px ${color}66`}}>{callName(name)}</div>
+      <div style={{position:"absolute",left:28,right:28,bottom:"18%",fontSize:22,fontWeight:500,lineHeight:1.5,letterSpacing:"-0.01em"}}>
+        <div className="sp-line" style={{animationDelay:".25s",color,fontWeight:600}}>{callName(name)},</div>
         <div className="sp-line" style={{animationDelay:".95s",color:"#F3F2FA"}}>{line}</div>
       </div>
     </div>
@@ -1379,17 +1394,12 @@ function ChronicleRow({h,C,col,d}){
   const runs=comboRuns(d.cells);
   const inRun=new Set(runs.flatMap(r=>Array.from({length:r.len},(_,k)=>r.start+k)));
   const lastRun=runs.length?runs[runs.length-1]:null;
-  /* 주차 레이블의 '월'은 달이 바뀌는 칸에만 — 12px로 한 줄에 넣기 위해.
-     첫 칸에도 붙이되, 바로 다음 칸에서 달이 바뀌면(긴 레이블 두 개가 붙음) 생략 */
-  const months=d.cells.map(c=>weekOfMonth(c.mon).m);
-  const starts=months.map((m,i)=>i>0&&m!==months[i-1]);
-  const showMonth=months.map((m,i)=>i===0?!starts[1]:starts[i]);
   return(
-    <div className="gl" style={{...GLASS,borderRadius:16,padding:"18px 16px"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:16}}>
+    <div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
         <span style={{fontSize:16,fontWeight:700,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</span>
-        {/* 가장 최근의 연속 달성 — 막대 안 대신 제목 오른쪽에 */}
-        {lastRun&&<span style={{fontSize:13,flex:"0 0 auto",fontWeight:700,color:C.ink}}>{lastRun.len}주 연속</span>}
+        {/* 가장 최근의 연속 달성 — 강조색 + 🔥 */}
+        {lastRun&&<span style={{fontSize:13,flex:"0 0 auto",fontWeight:700,color:"var(--acc)"}}>🔥 {lastRun.len}주 연속</span>}
       </div>
 
       <div style={{position:"relative"}}>
@@ -1400,7 +1410,7 @@ function ChronicleRow({h,C,col,d}){
               style={{flex:1,minWidth:0,height:H,borderRadius:6,position:"relative",overflow:"hidden",
                 background:c.pre
                   ?"repeating-linear-gradient(135deg,#ffffff0a 0 2px,transparent 2px 6px)"
-                  :inRun.has(i)?"transparent":C.lineSoft,   // 콤보 칸은 위 블록이 반투명이라 아래 칸 경계가 비치지 않도록
+                  :inRun.has(i)?"transparent":C.lineSoft,   // 콤보 칸은 위 블록이 덮으므로 비워둠
                 opacity:c.pre?0.5:1}}>
               {!c.pre&&!inRun.has(i)&&<div style={{position:"absolute",left:0,right:0,bottom:0,
                 height:`${Math.max(c.ratio*100, c.ratio>0?12:0)}%`,
@@ -1414,20 +1424,29 @@ function ChronicleRow({h,C,col,d}){
             style={{position:"absolute",top:0,height:H,...spanPos(r.start,r.len,n),background:col,borderRadius:6,boxShadow:`0 0 16px ${col}55`}}/>
         ))}
       </div>
+    </div>
+  );
+}
 
-      <div data-wk style={{display:"flex",gap:BAR_GAP,marginTop:6}}>
-        {d.cells.map((c,i)=>{
-          const wk=weekOfMonth(c.mon);
-          return(
-            /* 긴 "10월 1주차"는 칸보다 조금 넓어서 양옆 여백으로 살짝 넘칩니다(이웃은 짧은 "n주차"라 안 겹침) */
-            <div key={i} style={{flex:1,minWidth:0,display:"flex",justifyContent:"center",whiteSpace:"nowrap",
-              letterSpacing:"-0.02em",fontSize:"clamp(11px, 3.4vw, 12px)",color:c.current?C.ink:C.sub,fontWeight:c.current?700:500,
-              opacity:c.pre?0.4:c.current?1:0.75}}>
-              {showMonth[i]?`${wk.m}월 ${wk.w}주차`:`${wk.w}주차`}
-            </div>
-          );
-        })}
-      </div>
+/* 주차 레이블 — 회고 카드 맨 아래 한 번만. '월'은 달이 바뀌는 칸에만(12px 한 줄에 넣기 위해).
+   첫 칸에도 붙이되, 바로 다음 칸에서 달이 바뀌면(긴 레이블 두 개가 붙음) 생략 */
+function WeekLabels({C,cells}){
+  const months=cells.map(c=>weekOfMonth(c.mon).m);
+  const starts=months.map((m,i)=>i>0&&m!==months[i-1]);
+  const showMonth=months.map((m,i)=>i===0?!starts[1]:starts[i]);
+  return(
+    <div data-wk style={{display:"flex",gap:BAR_GAP,marginTop:-12}}>
+      {cells.map((c,i)=>{
+        const wk=weekOfMonth(c.mon);
+        return(
+          /* 긴 "10월 1주차"는 칸보다 조금 넓어서 양옆 여백으로 살짝 넘칩니다(이웃은 짧은 "n주차"라 안 겹침) */
+          <div key={i} style={{flex:1,minWidth:0,display:"flex",justifyContent:"center",whiteSpace:"nowrap",
+            letterSpacing:"-0.02em",fontSize:"clamp(11px, 3.4vw, 12px)",color:c.current?C.ink:C.sub,fontWeight:c.current?700:500,
+            opacity:c.current?1:0.75}}>
+            {showMonth[i]?`${wk.m}월 ${wk.w}주차`:`${wk.w}주차`}
+          </div>
+        );
+      })}
     </div>
   );
 }

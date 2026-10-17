@@ -1,5 +1,5 @@
 /* GET /api/habits
-   →  { habits: [{ id, name, kind, target, emoji, color, owner, start }], me, owners, ownerProp }
+   →  { habits: [{ id, name, kind, target, emoji, color, owner, start }], me, owners, ownerProp, habitsDb }
 
    노션 Habits DB에서 '활성'이 켜진 습관을 소유자 정보와 함께 가져옵니다. */
 
@@ -82,6 +82,7 @@ export default async function handler(req, res) {
       me: process.env.NOTION_ME || "초록",
       owners,
       ownerProp: pOwner || null,
+      habitsDb: CFG.habitsDb,   // 앱의 '해빗 수정하기'가 이 노션 DB를 엽니다
       allProps: pOwner ? undefined : Object.keys(props), // 소유자를 못 찾았을 때만 진단용으로
     });
   } catch (e) {
