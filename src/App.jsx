@@ -152,7 +152,7 @@ function NightBG({vivid=false}){
   const stars=useMemo(()=>Array.from({length:90},(_,i)=>({x:rnd(i,1)*100,y:rnd(i,2)*100,r:.5+rnd(i,3)*1.1,o:.25+rnd(i,4)*.6,d:rnd(i,5)*6})),[]);
   return(
     <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
-      background:vivid?"linear-gradient(180deg,#03040B 0%,#070820 45%,#120F3A 80%,#1C1650 100%)":"transparent"}}>
+      background:vivid?"linear-gradient(180deg,#040409 0%,#09080F 45%,#15111F 78%,#211A2C 100%)":"transparent"}}>
       <svg width="100%" height="100%" style={{position:"absolute",inset:0}}>
         {stars.map((t,i)=><circle key={i} className={vivid&&i%3===0&&!reduceMotion?"twk":""} cx={`${t.x}%`} cy={`${t.y}%`} r={vivid?t.r:t.r*.75}
           fill="#fff" opacity={vivid?t.o:t.o*.22} style={{animationDelay:`${t.d}s`}}/>)}
@@ -652,7 +652,9 @@ export default function App(){
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
         *{box-sizing:border-box}
-        html,body{max-width:100%;overflow-x:clip;background:#0A0918}   /* 화면 끝을 넘겨 당겨도 같은 색 */
+        html{background:#040409}   /* 상태 표시줄·위로 당겼을 때 = 화면 맨 위 색 */
+        html,body{max-width:100%;overflow-x:clip}
+        body{background:linear-gradient(180deg,#040409 0%,#0A0918 100%)}
         .mono{font-variant-numeric:tabular-nums}   /* 폰트는 Pretendard 하나 — 숫자만 폭을 맞춤 */
         button,input,textarea,select{font-family:inherit}
         .tap{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;transition:transform .18s cubic-bezier(.34,1.56,.64,1),border-color .2s,background .25s,box-shadow .25s}
@@ -897,7 +899,7 @@ export default function App(){
         {!booting&&tab==="review"&&(
           <div className="fade">
             {/* 지난주 이맘때 vs 지금 — 과거의 나를 이기고 싶게 */}
-            <PaceCard C={C} p={paceOf(activeHabits)} color={activeColor} onOpen={openDetail}/>
+            <PaceCard C={C} p={paceOf(activeHabits)} color={activeColor}/>
 
             {(isNotion||person==="me")
               ? activeHabits.length>0&&
@@ -1353,7 +1355,8 @@ function CheerCard({C,stars,name,onPraise}){
    ① 같은 요일까지만 비교한 헤드라인 숫자  ② 월→일 누적 선(지난주 점선 / 이번 주 실선)
    ③ 오늘 할 한 걸음  ④ 최고 기록에 가까울 때만 기록 안내 */
 const DAYS=["월","화","수","목","금","토","일"];
-function PaceCard({C,p,color,onOpen}){
+function PaceCard({C,p,color}){
+  const [hi,setHi]=useState(null);          // 그래프에서 가리킨 요일 (마우스 올림·탭)
   if(!p) return null;
   const {todayIdx,cur,prev,now,then,diff,next,onTrack,total,best,bestMon,projected}=p;
   const W=560,H=150,PX=24,PT=18,PB=14;
@@ -1366,12 +1369,8 @@ function PaceCard({C,p,color,onOpen}){
   const label=diff>0?"지난주 이맘때보다 더 체크했어요":diff===0?"지난주 이맘때와 똑같아요":"지난주 이맘때보다 덜 했어요";
   const wk=bestMon&&weekOfMonth(bestMon);
   /* 기록이 너무 작으면(3번 미만) 숨김 */
-  const badge=best>=3&&(now>best?"🏆 최고 기록 경신 중"
-    :now===best?"🏆 한 번만 더 하면 최고"
-    :projected>=best*0.8?`🏆 최고 ${best}번 · ${best-now}번 남음`:null);
-  const chipGain=next&&(diff>=0?`+${diff+1}`:diff===-1?"동점":`${diff+1}`);
-  const leg=(line,txt,n)=>(<span style={{display:"flex",alignItems:"center",gap:6}}>{line}{txt}
-    <b style={{color:C.ink,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{n}</b></span>);
+  /* 최고 기록 — 이번 주가 지난 모든 주보다 많으면 축하, 아니면 최고 주와 횟수 */
+  const isBest=now>0&&now>best;
 
   return(
     <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",marginBottom:60,
@@ -1384,17 +1383,29 @@ function PaceCard({C,p,color,onOpen}){
           </div>
           <div style={{fontSize:13,color:C.sub,marginTop:6}}>{label}</div>
         </div>
-        {badge&&<span style={{flex:"0 0 auto",fontSize:12,fontWeight:700,color:"var(--acc)",background:"rgba(var(--acc-rgb),.14)",
-          borderRadius:999,padding:"6px 10px",whiteSpace:"nowrap"}}>{badge}</span>}
       </div>
 
       <div style={{display:"flex",flexDirection:"column",marginTop:16}}>
-        {/* 범례 + 이번 주/지난주 같은 때까지의 체크 수 */}
-        <div style={{display:"flex",justifyContent:"flex-end",gap:14,fontSize:12,color:C.sub,marginBottom:6}}>
-          {leg(<i style={{width:14,height:3,borderRadius:2,background:color}}/>,"이번 주",now)}
-          {leg(<i style={{width:14,height:0,borderTop:"2px dashed rgba(255,255,255,.4)"}}/>,"지난주",then)}
-        </div>
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{display:"block",overflow:"visible"}} aria-hidden="true">
+        <div style={{position:"relative"}}
+          onPointerMove={e=>{const r=e.currentTarget.getBoundingClientRect();const x=(e.clientX-r.left)/r.width*W;
+            setHi(Math.max(0,Math.min(6,Math.round((x-PX)/((W-PX*2)/6)))));}}
+          onPointerDown={e=>{const r=e.currentTarget.getBoundingClientRect();const x=(e.clientX-r.left)/r.width*W;
+            setHi(Math.max(0,Math.min(6,Math.round((x-PX)/((W-PX*2)/6)))));}}
+          onPointerLeave={e=>{if(e.pointerType==="mouse")setHi(null);}}>
+        {/* 툴팁 — 그 요일까지의 누적 체크 수 */}
+        {hi!=null&&
+          <div style={{position:"absolute",left:`${X(hi)/W*100}%`,top:0,zIndex:2,pointerEvents:"none",
+            transform:`translate(${hi<=1?"-12%":hi>=5?"-88%":"-50%"},-100%)`,whiteSpace:"nowrap",
+            background:"rgba(20,20,28,.94)",borderRadius:10,padding:"8px 12px",fontSize:12,lineHeight:1.6,
+            boxShadow:"0 6px 20px rgba(0,0,0,.5)"}}>
+            <div style={{fontWeight:700,color:C.ink,marginBottom:2}}>{DAYS[hi]}요일까지</div>
+            <div style={{color:"var(--acc)"}}>이번 주 <b>{hi<=todayIdx?`${cur[hi]}회`:"–"}</b></div>
+            <div style={{color:C.sub}}>지난주 <b style={{color:C.ink}}>{prev[hi]}회</b></div>
+          </div>}
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{display:"block",overflow:"visible",touchAction:"pan-y"}} aria-hidden="true">
+          {hi!=null&&<line x1={X(hi)} x2={X(hi)} y1={PT-8} y2={H-PB+4} stroke="#fff" strokeOpacity=".25" strokeWidth="1.5" strokeDasharray="3 4"/>}
+          {hi!=null&&<circle cx={X(hi)} cy={Y(prev[hi])} r="5" fill="#fff" fillOpacity=".6"/>}
+          {hi!=null&&hi<=todayIdx&&hi!==todayIdx&&<circle cx={X(hi)} cy={Y(cur[hi])} r="5.5" fill={color}/>}
           {/* 지난주: 옅은 점선 (한 주 전체) */}
           <polyline points={pts(prev,7)} fill="none" stroke="#fff" strokeOpacity=".35" strokeWidth="2"
             strokeDasharray="5 6" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1404,21 +1415,21 @@ function PaceCard({C,p,color,onOpen}){
           {/* 오늘 위치에 빛나는 별 */}
           <GlowStar x={X(todayIdx)} y={Y(now)} ratio={1} color={color} complete scale={1}/>
         </svg>
+        </div>
         <div style={{display:"flex",justifyContent:"space-between",padding:`6px ${PX/W*100}% 0`,fontSize:12}}>
           {DAYS.map((d,i)=><span key={d} style={{width:0,display:"flex",justifyContent:"center",
             color:i===todayIdx?C.ink:C.sub,fontWeight:i===todayIdx?700:500,opacity:i>todayIdx?.5:1}}>{d}</span>)}
         </div>
       </div>
 
-      {/* 다음 한 걸음 — 누르면 그 습관 상세(오늘 체크하기)로 */}
-      {next
-        ? <button className="btn" onClick={()=>onOpen&&onOpen(next.id)}
-            style={{...BTN_FILL,marginTop:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
-              width:"100%",padding:"12px 16px",borderRadius:14,fontSize:14,textAlign:"left"}}>
-            <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>오늘 ‘{next.name}’ 하면</span>
-            <span style={{flex:"0 0 auto",fontWeight:800}}>{chipGain} ›</span>
-          </button>
-        : <div style={{marginTop:16,fontSize:13,color:C.sub}}>이 속도면 목표 {onTrack}/{total}개 달성</div>}
+      {(isBest||best>0)&&
+        <div style={{marginTop:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
+          padding:"12px 16px",borderRadius:14,background:"rgba(var(--acc-rgb),.1)",fontSize:14}}>
+          {isBest
+            ? <span style={{fontWeight:700,color:"var(--acc)"}}>🏆 이번 주가 최고 기록이에요!</span>
+            : <><span style={{color:C.sub}}>🏆 최고 기록</span>
+                <span style={{fontWeight:700,color:C.ink,whiteSpace:"nowrap"}}>{wk.m}월 {wk.w}주차 · {best}회</span></>}
+        </div>}
     </div>
   );
 }
@@ -1455,20 +1466,24 @@ function Grass({cell,endISO,weeks,today,gap=3,radius=3,showMonths=false,showDays
   );
 }
 
-/* 회고 목록의 한 행 — 이름 + 연속 기록, 최근 16주 잔디, 누르면 상세 */
+/* 회고 목록의 한 행 — 이름 + 연속 기록 | 최근 3주(주 3줄 × 월~일) 작은 잔디 · 누르면 상세 */
 function HabitGrassRow({C,st,today,onOpen}){
+  const mon0=addDays(mondayOf(fromISO(today)),-14);
+  const weeks=[0,1,2].map(i=>weekDatesFrom(addDays(mon0,i*7)));
   return(
     <button className="btn row-tap" onClick={onOpen} aria-label={`${st.h.name} 자세히 보기`}
-      style={{display:"block",width:"100%",textAlign:"left",background:"transparent",border:"none",color:"inherit",
-        padding:"14px 10px",borderRadius:14,fontFamily:"inherit"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:10}}>
-        <span style={{fontSize:16,fontWeight:700,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{st.h.name}</span>
-        <span style={{display:"flex",alignItems:"center",gap:8,flex:"0 0 auto"}}>
-          {st.cur>0&&<span style={{fontSize:13,fontWeight:700,color:"var(--acc)"}}>🔥 {st.cur}{st.unit} 연속</span>}
-          <span aria-hidden="true" style={{fontSize:18,color:C.sub,lineHeight:1}}>›</span>
-        </span>
+      style={{display:"flex",alignItems:"center",gap:12,width:"100%",textAlign:"left",background:"transparent",border:"none",color:"inherit",
+        padding:"12px 10px",borderRadius:14,fontFamily:"inherit"}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:15,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{st.h.name}</div>
+        <div style={{fontSize:13,fontWeight:700,marginTop:4,color:st.cur>0?"var(--acc)":C.sub}}>
+          {st.cur>0?`🔥 ${st.cur}${st.unit} 연속`:`이번 주 ${Math.min(st.wc,st.t)}/${st.t}`}</div>
       </div>
-      <Grass cell={st.cell} endISO={today} weeks={16} today={today}/>
+      <div aria-hidden="true" style={{display:"grid",gridTemplateColumns:"repeat(7,12px)",gap:3,flex:"0 0 auto"}}>
+        {weeks.flat().map(iso=>{const k=st.cell(iso);return <span key={iso} title={iso} style={{width:12,height:12,borderRadius:3,
+          background:GRASS_BG[k],boxShadow:iso===today?"0 0 0 1.5px rgba(255,255,255,.85)":k==="full"?"0 0 6px rgba(var(--acc-rgb),.35)":"none"}}/>;})}
+      </div>
+      <span aria-hidden="true" style={{fontSize:18,color:C.sub,lineHeight:1,flex:"0 0 auto"}}>›</span>
     </button>
   );
 }
