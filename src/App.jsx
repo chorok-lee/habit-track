@@ -104,7 +104,7 @@ function SkyDefs(){
           <React.Fragment key={k}>
             <radialGradient id={`halo-${k}`}><stop offset="0" stopColor="#fff" stopOpacity=".9"/>
               <stop offset=".25" stopColor={c} stopOpacity=".55"/><stop offset="1" stopColor={c} stopOpacity="0"/></radialGradient>
-            <radialGradient id={`neb-${k}`}><stop offset="0" stopColor={c} stopOpacity=".22"/>
+            <radialGradient id={`neb-${k}`}><stop offset="0" stopColor={c} stopOpacity=".3"/>
               <stop offset=".55" stopColor={c} stopOpacity=".07"/><stop offset="1" stopColor={c} stopOpacity="0"/></radialGradient>
           </React.Fragment>
         ))}
@@ -122,7 +122,7 @@ function SkyDefs(){
 /* 별 하나 — 달성률(0→1)에 따라 희미한 점 → 작은 반짝임 → 빛나는 큰 반짝임 */
 function GlowStar({x,y,ratio,color,complete,scale=1,twinkle=0}){
   const k=toneKey(color);
-  if(ratio<=0) return <circle cx={x} cy={y} r={1.6*scale} fill={color} opacity=".35"/>;
+  if(ratio<=0) return <circle cx={x} cy={y} r={1.6*scale} fill={color} opacity=".6"/>;
   const R=(complete?10:3.5+ratio*4.5)*scale;
   return(
     <g className={complete&&!reduceMotion?"twk":""} style={complete?{animationDelay:`${twinkle}s`}:undefined}>
@@ -142,7 +142,7 @@ function ConstLines({seq,scale=1,dim=1}){
     const ga=gap(a.s),gb=gap(b.s); if(L<=ga+gb) return null;
     const lit=a.s.ratio>0&&b.s.ratio>0, both=a.s.complete&&b.s.complete;
     return <line key={i} x1={a.p.x+dx/L*ga} y1={a.p.y+dy/L*ga} x2={b.p.x-dx/L*gb} y2={b.p.y-dy/L*gb}
-      stroke="#fff" strokeWidth={(both?1:0.7)*Math.max(.6,scale)} opacity={(both?.55:lit?.32:.18)*dim}
+      stroke="#fff" strokeWidth={(both?1:0.7)*Math.max(.6,scale)} opacity={(both?.7:lit?.45:.28)*dim}
       strokeDasharray={lit?undefined:`${2*scale} ${3*scale}`} strokeLinecap="round"/>;
   });
 }
@@ -277,6 +277,13 @@ export default function App(){
   const [selStar,setSelStar]=useState(null);
   const prevComplete=useRef(-1);
   const lastToggle=useRef(0);
+  /* 고정 헤더 높이를 CSS 변수로 — 회고의 주차 레이블이 그 바로 아래에 붙도록 (안내줄이 뜨면 높이가 바뀜) */
+  const hdrRef=useRef(null);
+  useLayoutEffect(()=>{
+    const el=hdrRef.current; if(!el||typeof ResizeObserver==="undefined") return;
+    const set=()=>document.documentElement.style.setProperty("--hdr",el.offsetHeight+"px");
+    set(); const ro=new ResizeObserver(set); ro.observe(el); return()=>ro.disconnect();
+  },[]);
 
   /* 노션 연결 상태: loading | notion | local */
   const [sync,setSync]=useState({mode:cache0?"notion":"loading",error:""});
@@ -362,7 +369,9 @@ export default function App(){
     try{
       const r=await api("/api/messages?to="+encodeURIComponent(who));
       const seen=getSeen();
-      const list=(Array.isArray(r?.messages)?r.messages:[]).map(m=>({...m,read:m.read||seen.has(m.id)}));
+      /* 보낸 지 7일이 지난 편지는 읽은 것으로 — 날짜로만 판단해서 어느 기기에서나 같게 */
+      const weekAgo=toISO(addDays(new Date(),-7));
+      const list=(Array.isArray(r?.messages)?r.messages:[]).map(m=>({...m,read:m.read||seen.has(m.id)||(!!m.date&&String(m.date).slice(0,10)<weekAgo)}));
       setLetters(list);
     }catch(e){ setLetters([]); }
   };
@@ -736,7 +745,7 @@ export default function App(){
       <SkyDefs/>
       <div className="wrap" style={{position:"relative",zIndex:1}}>
         {/* 헤더 — 일반적인 앱 헤더 형식: 가운데 화면 전환, 오른쪽 편지함 */}
-        <header className="navbar" style={{paddingTop:16,paddingBottom:16,marginBottom:8}}>
+        <header ref={hdrRef} className="navbar" style={{paddingTop:16,paddingBottom:16,marginBottom:8}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center"}}>
             <span/>
             <div className="gl" role="tablist" style={{...GLASS,borderRadius:999,display:"flex",gap:3,padding:3}}>
@@ -866,12 +875,12 @@ export default function App(){
 
             {(isNotion||person==="me")
               ? activeHabits.length>0&&
-                /* 목표별 회고 — 카드 하나 안에 습관을 차례로, 주차 레이블은 맨 아래 한 번만 */
+                /* 목표별 회고 — 카드 하나 안에 습관을 차례로, 주차 레이블은 맨 위 한 번(스크롤해도 헤더 아래 고정) */
                 <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",display:"flex",flexDirection:"column",gap:24}}>
+                  <WeekLabels C={C} cells={chronicleOf(activeHabits[0]).cells}/>
                   {activeHabits.map(h=>(
                     <ChronicleRow key={h.id} h={h} C={C} col={activeColor} d={chronicleOf(h)}/>
                   ))}
-                  <WeekLabels C={C} cells={chronicleOf(activeHabits[0]).cells}/>
                 </div>
               : <div style={{display:"flex",flexDirection:"column",gap:12}}>
                   {sortHabits(FRIEND_HABITS).map(h=>(
@@ -1158,7 +1167,7 @@ function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSe
   const bokeh=useMemo(()=>Array.from({length:9},(_,i)=>({x:30+rnd(i,7)*500,y:20+rnd(i,8)*256,r:1.6+rnd(i,9)*2.2,o:.18+rnd(i,10)*.25})),[]);
 
   /* 별자리를 1.7배로 — 각자 반쪽 하늘의 대부분을 채우도록 */
-  const SC=1.7, ME_C=[148,152], FR_C=[412,152];
+  const SC=2.38, ME_C=[148,158], FR_C=[412,158];   // 1.7 → 2.38 (1.4배)
   const mePts = buildPoints(meStars, ME_C, SC);
   const frPts = buildPoints(frStars, FR_C, SC);
   const meAll = meStars.length>0 && meStars.every(s=>s.complete);
@@ -1187,11 +1196,11 @@ function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSe
         style={{pointerEvents:"none",animationDelay:`${t.d}s`}}/>)}
       {bokeh.map((t,i)=><circle key={"b"+i} cx={t.x} cy={t.y} r={t.r} fill="#fff" opacity={t.o} filter="url(#bokeh)" style={{pointerEvents:"none"}}/>)}
 
-      <OneStar stars={meStars} pts={mePts} color={GREEN} allComplete={meAll} scale={1.15}
+      <OneStar stars={meStars} pts={mePts} color={GREEN} allComplete={meAll} scale={1.6}
         selStar={person==="me"?selStar:null}
         onSelect={id=>{ if(person==="me") setSelStar(k=>k===id?null:id); }}
         dim={person==="friend"}/>
-      <OneStar stars={frStars} pts={frPts} color={VIOLET} allComplete={frAll} scale={1.15}
+      <OneStar stars={frStars} pts={frPts} color={VIOLET} allComplete={frAll} scale={1.6}
         selStar={person==="friend"?selStar:null}
         onSelect={id=>{ if(person==="friend") setSelStar(k=>k===id?null:id); }}
         dim={person==="me"}/>
@@ -1214,7 +1223,7 @@ function OneStar({stars,pts,color,allComplete,selStar,onSelect,dim,scale=1}){
   if(!stars.length||!pts.length) return null;
   const seq=connOrder(stars.length).map(i=>({s:stars[i],p:pts[i]}));
   return(
-    <g opacity={dim?0.38:1}>
+    <g opacity={dim?0.6:1}>
       <ConstLines seq={seq} scale={scale}/>
       {stars.map((s,i)=>{
         const pt=pts[i];
@@ -1325,9 +1334,10 @@ function PaceCard({C,p,color}){
   const X=(i)=>PX+(W-PX*2)*i/6, Y=(v)=>PT+(H-PT-PB)*(1-v/max);
   const pts=(arr,n)=>arr.slice(0,n).map((v,i)=>`${X(i)},${Y(v)}`).join(" ");
 
-  const head=diff>0?<>지난주 이맘때보다 <b style={{color:"var(--acc)"}}>+{diff}번</b></>
-    :diff===0?<>지난주 이맘때와 <b style={{color:"var(--acc)"}}>같아요</b></>
-    :<>지난주 이맘때까지 <b style={{color:"var(--acc)"}}>{-diff}번</b> 남았어요</>;
+  /* 무엇의 차이인지(습관 체크 횟수) 문장 안에서 바로 읽히게 */
+  const head=diff>0?<>지난주 이맘때보다 <b style={{color:"var(--acc)"}}>{diff}번 더</b> 체크했어요</>
+    :diff===0?<>지난주 이맘때만큼 <b style={{color:"var(--acc)"}}>똑같이</b> 체크했어요</>
+    :<>지난주 이맘때보다 <b style={{color:"var(--acc)"}}>{-diff}번 덜</b> 했어요, 아직 따라잡을 수 있어요</>;
   const step=next
     ? (diff>=0?`오늘 ‘${next.name}’ 하면 +${diff+1}번으로 앞서가요`
       :diff===-1?`오늘 ‘${next.name}’ 하면 지난주와 같아져요`
@@ -1340,12 +1350,17 @@ function PaceCard({C,p,color}){
     :projected>=best*0.8?`최고 기록 ${wk.m}월 ${wk.w}주차 ${best}번 · ${best-now}번 남음`:null);
 
   return(
-    <div className="gl" style={{...GLASS,borderRadius:20,aspectRatio:"560/296",padding:"18px 16px",marginBottom:60,
+    <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",marginBottom:60,
       display:"flex",flexDirection:"column"}}>
-      <div style={{fontSize:20,fontWeight:700,letterSpacing:"-0.01em",lineHeight:1.35}}>{head}</div>
-      <div className="mono" style={{fontSize:13,color:C.sub,marginTop:4}}>이번 주 {now}번 · 지난주 같은 때 {then}번</div>
+      <div style={{fontSize:19,fontWeight:700,letterSpacing:"-0.01em",lineHeight:1.4,wordBreak:"keep-all"}}>{head}</div>
+      <div className="mono" style={{fontSize:13,color:C.sub,marginTop:6}}>월요일부터 오늘까지 습관 체크 {now}번 · 지난주엔 {then}번</div>
 
-      <div style={{flex:1,minHeight:96,display:"flex",flexDirection:"column",justifyContent:"flex-end",marginTop:10}}>
+      <div style={{display:"flex",flexDirection:"column",marginTop:14}}>
+        {/* 범례 — 그래프 선과 겹치지 않게 별도 줄 */}
+        <div style={{display:"flex",justifyContent:"flex-end",gap:12,fontSize:12,color:C.sub,marginBottom:6}}>
+          <span style={{display:"flex",alignItems:"center",gap:5}}><i style={{width:14,height:3,borderRadius:2,background:color}}/>이번 주</span>
+          <span style={{display:"flex",alignItems:"center",gap:5}}><i style={{width:14,height:0,borderTop:"2px dashed rgba(255,255,255,.4)"}}/>지난주</span>
+        </div>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{display:"block",overflow:"visible"}} aria-hidden="true">
           {/* 지난주: 옅은 점선 (한 주 전체) */}
           <polyline points={pts(prev,7)} fill="none" stroke="#fff" strokeOpacity=".35" strokeWidth="2"
@@ -1427,14 +1442,16 @@ function ChronicleRow({h,C,col,d}){
   );
 }
 
-/* 주차 레이블 — 회고 카드 맨 아래 한 번만. '월'은 달이 바뀌는 칸에만(12px 한 줄에 넣기 위해).
+/* 주차 레이블 — 회고 카드 맨 위 한 번, 스크롤 중에도 헤더 아래 붙어 있음. '월'은 달이 바뀌는 칸에만(12px 한 줄에 넣기 위해).
    첫 칸에도 붙이되, 바로 다음 칸에서 달이 바뀌면(긴 레이블 두 개가 붙음) 생략 */
 function WeekLabels({C,cells}){
   const months=cells.map(c=>weekOfMonth(c.mon).m);
   const starts=months.map((m,i)=>i>0&&m!==months[i-1]);
   const showMonth=months.map((m,i)=>i===0?!starts[1]:starts[i]);
   return(
-    <div data-wk style={{display:"flex",gap:BAR_GAP,marginTop:-12}}>
+    <div data-wk style={{display:"flex",gap:BAR_GAP,marginBottom:-12,position:"sticky",top:"var(--hdr,72px)",zIndex:2,
+      margin:"-6px -16px -12px",padding:"8px 16px",borderRadius:12,
+      background:"rgba(6,6,14,.72)",WebkitBackdropFilter:"blur(12px)",backdropFilter:"blur(12px)"}}>
       {cells.map((c,i)=>{
         const wk=weekOfMonth(c.mon);
         return(
