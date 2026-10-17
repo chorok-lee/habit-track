@@ -685,7 +685,8 @@ export default function App(){
         .wrap{max-width:600px;margin:0 auto;padding:0 18px 96px}
         .navbar{position:sticky;top:0;z-index:10;background:rgba(4,5,14,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
         /* 글래스 테두리 — iOS처럼 거의 고른 밝기, 위쪽만 아주 살짝 더 밝게 */
-        .gl::before,.glass::before,.sky::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;z-index:1;
+        /* 빛 테두리는 떠 있는 면(편지 모달·별 툴팁)에만 — 카드·버튼·패널엔 넣지 않음 */
+        .gl.edge::before,.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;z-index:1;
           background:linear-gradient(170deg,rgba(255,255,255,.2) 0%,rgba(255,255,255,.13) 45%,rgba(255,255,255,.11) 75%,rgba(255,255,255,.15) 100%);
           -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
           mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
@@ -826,7 +827,7 @@ export default function App(){
               : <CheerCard C={C} stars={myStars} name={meName} onPraise={lettersOn?()=>compose(meName,friendName):null}/>}
 
             {/* 날짜 스테퍼 — 위쪽 브리핑(하늘·진행률·소식)과 구획을 분명히 나눔 */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,margin:"60px 0 12px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,margin:"40px 0 12px"}}>
               <button className="btn" onClick={()=>setSelDate(toISO(addDays(fromISO(selDate),-1)))} style={arrowBtn(C)}>←</button>
               <div style={{fontSize:16,fontWeight:700,minWidth:118,textAlign:"center"}}>{fromISO(selDate).getMonth()+1}월 {fromISO(selDate).getDate()}일 ({WD[(fromISO(selDate).getDay()+6)%7]})</div>
               <button className="btn" onClick={()=>{const n=addDays(fromISO(selDate),1);if(n<=new Date())setSelDate(toISO(n));}}
@@ -882,8 +883,8 @@ export default function App(){
             {/* 습관 목록은 노션에서 관리 — 습관 DB를 바로 엽니다 (노션 앱이 있으면 앱으로) */}
             {isNotion&&
               <a href={habitsUrl} target="_blank" rel="noopener noreferrer"
-                style={{display:"block",width:"fit-content",margin:"14px auto 0",padding:"8px 12px",fontSize:14,fontWeight:500,
-                  color:C.sub,textDecoration:"underline",textUnderlineOffset:3,textDecorationColor:"rgba(255,255,255,.25)"}}>
+                style={{display:"block",width:"fit-content",margin:"14px auto 0",padding:"8px 12px",fontSize:14,fontWeight:400,
+                  color:"rgba(163,162,189,.7)",textDecoration:"none"}}>
                 해빗 수정하기
               </a>}
 
@@ -984,7 +985,7 @@ function LoadingView({C,tab}){
       {/* 실제 화면 자리에 맞춘 뼈대 */}
       {tab==="sky"
         ? <>
-            <div className="sk" style={{height:32,margin:"60px auto 12px",width:200,borderRadius:999}}/>
+            <div className="sk" style={{height:32,margin:"40px auto 12px",width:200,borderRadius:999}}/>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
               <div className="sk" style={{height:296,borderRadius:20}}/>
             </div>
@@ -1108,7 +1109,7 @@ function ComposeSheet({C,to,onClose,onSend,onSent,sending}){
         style={{position:"absolute",inset:0,background:"rgba(4,5,10,.86)",animation:reduceMotion?"none":"fade .18s ease"}}/>
       {/* 배치용 래퍼는 클릭을 통과시켜, 모달 바깥을 누르면 뒤의 어두운 면이 받도록 */}
       <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",...W,position:"relative",pointerEvents:"none"}}>
-        <div className="gl" style={{...W,maxHeight:"100%",display:"flex",flexDirection:"column",background:"rgba(24,24,32,.94)",position:"relative",borderRadius:20,pointerEvents:"auto",WebkitBackdropFilter:"blur(20px)",backdropFilter:"blur(20px)",
+        <div className="gl edge" style={{...W,maxHeight:"100%",display:"flex",flexDirection:"column",background:"rgba(24,24,32,.94)",position:"relative",borderRadius:20,pointerEvents:"auto",WebkitBackdropFilter:"blur(20px)",backdropFilter:"blur(20px)",
           padding:"18px 16px",animation:reduceMotion?"none":"fade .18s ease"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:12}}>
             <h2 style={{fontSize:20,fontWeight:800,letterSpacing:"-0.02em",margin:0}}>{to}에게</h2>
@@ -1205,7 +1206,7 @@ function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSe
   const frAll = frStars.length>0 && frStars.every(s=>s.complete);
 
   /* 글자는 SVG 밖(HTML)에 실제 px 크기로 — SVG 안에 두면 폰에서 7px까지 줄어듭니다 */
-  const lab=(x,col,on)=>({position:"absolute",top:12,left:`${x/560*100}%`,transform:"translateX(-50%)",
+  const lab=(x,col,on)=>({position:"absolute",top:22,left:`${x/560*100}%`,transform:"translateX(-50%)",
     fontSize:13,fontWeight:700,color:col,opacity:on?0.95:0.4,pointerEvents:"none",whiteSpace:"nowrap",
     textShadow:on?`0 0 12px ${col}88`:"none"});
   const tip=selStar&&(()=>{
@@ -1284,7 +1285,7 @@ function StarTooltip({star,pt,color}){
   const edge=pt.x<110?"left":pt.x>450?"right":"center";
   const tx=edge==="left"?"-18px":edge==="right"?"calc(-100% + 18px)":"-50%";
   return(
-    <div className="gl" style={{position:"absolute",left:`${pt.x/560*100}%`,top:`${pt.y/296*100}%`,zIndex:2,
+    <div className="gl edge" style={{position:"absolute",left:`${pt.x/560*100}%`,top:`${pt.y/296*100}%`,zIndex:2,
       transform:`translate(${tx}, calc(-100% - 16px))`,pointerEvents:"none",
       background:"rgba(16,17,44,.9)",borderRadius:12,padding:"8px 12px",textAlign:"center",whiteSpace:"nowrap",
       WebkitBackdropFilter:"blur(10px)",backdropFilter:"blur(10px)",boxShadow:"0 6px 20px #00000080"}}>
