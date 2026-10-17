@@ -807,16 +807,19 @@ export default function App(){
         {!booting&&tab==="sky"&&(
           <div className="fade">
             {/* 밤하늘 히어로 */}
+            {/* 별자리 + 습관 진행률을 한 패널로 — 아래쪽은 회색 그라데이션으로 자연스럽게 이어짐 */}
             <div className="sky" style={{marginBottom:12}}>
-              <ConstellationSky
-                meStars={myStars} frStars={frStars}
-                activeColor={activeColor} allComplete={allComplete}
-                selStar={selStar} setSelStar={setSelStar}
-                burst={burst} person={person}
-                meName={meName} friendName={friendName}/>
+              {/* 툴팁·이름표 위치(%)가 그래픽 높이 기준이 되도록 그래픽만 감쌈 */}
+              <div style={{position:"relative"}}>
+                <ConstellationSky
+                  meStars={myStars} frStars={frStars}
+                  activeColor={activeColor} allComplete={allComplete}
+                  selStar={selStar} setSelStar={setSelStar}
+                  burst={burst} person={person}
+                  meName={meName} friendName={friendName}/>
+              </div>
+              <ProgressArea C={C} embedded rows={[{who:meName,color:GREEN,items:meProg},{who:friendName,color:VIOLET,items:frProg}]}/>
             </div>
-
-            <ProgressArea C={C} rows={[{who:meName,color:GREEN,items:meProg},{who:friendName,color:VIOLET,items:frProg}]}/>
             {/* 지금 보고 있지 않은 쪽의 달성 소식 — 초록 화면엔 소운, 소운 화면엔 초록 */}
             {person==="me"
               ? <CheerCard C={C} stars={frStars} name={friendName} onPraise={lettersOn?()=>compose(friendName,meName):null}/>
@@ -981,7 +984,6 @@ function LoadingView({C,tab}){
       {/* 실제 화면 자리에 맞춘 뼈대 */}
       {tab==="sky"
         ? <>
-            <div className="sk" style={{height:100,marginBottom:12}}/>
             <div className="sk" style={{height:32,margin:"60px auto 12px",width:200,borderRadius:999}}/>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
               <div className="sk" style={{height:296,borderRadius:20}}/>
@@ -1305,9 +1307,13 @@ function BurstEffect({cx,cy,color}){
 }
 
 /* ── ProgressArea ── */
-function ProgressArea({C,rows}){
+function ProgressArea({C,rows,embedded=false}){
   return(
-    <div className="gl" style={{...GLASS,borderRadius:16,padding:"18px 16px",marginBottom:12,display:"flex",flexDirection:"column",gap:18,overflow:"hidden"}}>
+    <div className={embedded?undefined:"gl"} style={{...(embedded
+        ? {position:"relative",marginTop:-28,padding:"34px 16px 18px",
+           background:"linear-gradient(180deg,rgba(150,150,170,0) 0%,rgba(150,150,170,.07) 45%,rgba(150,150,170,.12) 100%)"}
+        : {...GLASS,borderRadius:16,padding:"18px 16px",marginBottom:12}),
+      display:"flex",flexDirection:"column",gap:18,overflow:"hidden"}}>
       {rows.map((row,ri)=>(
         <div key={ri} style={{display:"flex",alignItems:"flex-start",gap:12,minWidth:0}}>
           {/* 이름을 그대로 적습니다 — 보는 사람에 따라 '나'가 달라지므로 */}
@@ -1373,7 +1379,7 @@ function PaceCard({C,p,color}){
   const isBest=now>0&&now>best;
 
   return(
-    <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",marginBottom:60,
+    <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",marginBottom:12,
       display:"flex",flexDirection:"column"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
         <div style={{minWidth:0}}>
