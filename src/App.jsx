@@ -277,13 +277,6 @@ export default function App(){
   const [selStar,setSelStar]=useState(null);
   const prevComplete=useRef(-1);
   const lastToggle=useRef(0);
-  /* 고정 헤더 높이를 CSS 변수로 — 회고의 주차 레이블이 그 바로 아래에 붙도록 (안내줄이 뜨면 높이가 바뀜) */
-  const hdrRef=useRef(null);
-  useLayoutEffect(()=>{
-    const el=hdrRef.current; if(!el||typeof ResizeObserver==="undefined") return;
-    const set=()=>document.documentElement.style.setProperty("--hdr",el.offsetHeight+"px");
-    set(); const ro=new ResizeObserver(set); ro.observe(el); return()=>ro.disconnect();
-  },[]);
 
   /* 노션 연결 상태: loading | notion | local */
   const [sync,setSync]=useState({mode:cache0?"notion":"loading",error:""});
@@ -300,6 +293,16 @@ export default function App(){
   /* 별똥별 편지 */
   const [letters,setLetters]=useState([]);
   const [modal,setModal]=useState(null);   // {type:"read"|"compose"|"box", letter, to}
+  /* 습관 상세 — 주소에 #habit/<id>를 붙여 폰의 뒤로가기로 닫히게 */
+  const hashId=()=>{const m=(window.location.hash||"").match(/^#habit\/(.+)$/);return m?decodeURIComponent(m[1]):null;};
+  const [detailId,setDetailId]=useState(hashId);
+  const pushedDetail=useRef(false);
+  useEffect(()=>{const on=()=>setDetailId(hashId());window.addEventListener("popstate",on);return()=>window.removeEventListener("popstate",on);},[]);
+  const openDetail=(id)=>{window.history.pushState({hd:1},"",`#habit/${encodeURIComponent(id)}`);pushedDetail.current=true;setDetailId(id);};
+  const closeDetail=()=>{
+    if(pushedDetail.current){pushedDetail.current=false;window.history.back();}
+    else{window.history.replaceState(null,"",window.location.pathname+window.location.search);setDetailId(null);}
+  };
   const [sending,setSending]=useState(false);
   const [deviceMe,setDeviceMe]=useState(()=>{try{return localStorage.getItem("hr_me")||"";}catch{return "";}});
 
@@ -471,6 +474,7 @@ export default function App(){
   const myHabits=sortHabits(isNotion?habits.filter(h=>(h.owner||meName)===meName):habits);
   const friendHabits=sortHabits(isNotion?habits.filter(h=>h.owner===friendName):[]);
   const activeHabits=person==="me"?myHabits:friendHabits;
+  const detailHabit=detailId?habits.find(h=>h.id===detailId)||null:null;
 
   const myCompleteCount=myHabits.reduce((n,h)=>n+(weekCount(h.id)>=tgtOf(h)?1:0),0);
 
@@ -533,7 +537,6 @@ export default function App(){
      각 칸이 '언제의 기록'인지 화면에서 바로 알 수 있도록,
      칸마다 그 주의 시작일·달성 횟수·목표를 함께 담아서 넘깁니다. */
   const curMon=mondayOf(fromISO(today));
-  const WEEKS=6;   // 회고 창: 최근 6주
 
   /* ── 페이스: 지난주 이맘때 vs 지금 (같은 요일까지만 공정하게 비교) ── */
   const paceOf=(list)=>{
@@ -559,17 +562,40 @@ export default function App(){
     return {todayIdx,cur,prev,now,then,diff:now-then,next,onTrack,total:list.length,best,bestMon,
       projected:now/(todayIdx+1)*7};
   };
-  const chronicleOf=(h)=>{
-    const t=tgtOf(h);
-    const cells=Array.from({length:WEEKS},(_,i)=>{
-      const mon=addDays(curMon,-(WEEKS-1-i)*7);
-      const done=weekDatesFrom(mon).reduce((n,d)=>n+(isLogged(h.id,d)?1:0),0);
-      return {mon:toISO(mon),done,target:t,ratio:Math.min(1,done/t),complete:done>=t,current:i===WEEKS-1,
-        pre:!startedBy(h,toISO(mon))};   // 목표를 시작하기 전의 주 — '못 한 주'와 다르게 그립니다
-    });
-    /* 연속·최고 기록 같은 숫자는 막대 모양으로 읽히므로 따로 세지 않습니다.
-       ✦ 분모도 시작한 뒤의 주만 셉니다 (2주 전에 시작했으면 ✦ 1/2) */
-    return {cells,recent:cells.filter(c=>c.complete).length,window:cells.filter(c=>!c.pre).length};
+  /* ── 습관 하나의 기록 통계 — 잔디밭 목록·상세 페이지가 함께 씀 ──
+     칸 상태: full(목표 채운 주의 체크) · part(아직 못 채운 주의 체크) · empty · pre(시작 전) · future
+     연속: 매일 습관은 '일', 주 N회 습관은 '주' 단위 (오늘/이번 주가 아직 비어 있어도 끊긴 걸로 보지 않음) */
+  const habitStats=(h)=>{
+    const t=tgtOf(h), daily=t>=7;
+    const startISO=startOf(h)||toISO(addDays(fromISO(today),-364));
+    const weekCnt={};
+    const cntOf=(mon)=>{const k=toISO(mon);if(weekCnt[k]==null)weekCnt[k]=weekDatesFrom(mon).reduce((n,d)=>n+(isLogged(h.id,d)?1:0),0);return weekCnt[k];};
+    const cell=(iso)=>{
+      if(iso>today) return "future";
+      if(iso<startISO) return "pre";
+      if(!isLogged(h.id,iso)) return "empty";
+      return cntOf(mondayOf(fromISO(iso)))>=t?"full":"part";
+    };
+    /* 날짜 순회 (시작일 ~ 오늘, 최대 1년) */
+    const days=[]; for(let d=fromISO(startISO>toISO(addDays(fromISO(today),-364))?startISO:toISO(addDays(fromISO(today),-364)));toISO(d)<=today;d=addDays(d,1)) days.push(toISO(d));
+    const logged=days.filter(d=>isLogged(h.id,d));
+    let cur=0,best=0;
+    if(daily){
+      let run=0; for(const d of days){ run=isLogged(h.id,d)?run+1:0; best=Math.max(best,run); }
+      let i=days.length-1; if(i>=0&&!isLogged(h.id,days[i])) i--;          // 오늘 아직이면 어제부터
+      while(i>=0&&isLogged(h.id,days[i])){cur++;i--;}
+    }else{
+      const mons=[]; for(let m=mondayOf(fromISO(days[0]||today));toISO(m)<=today;m=addDays(m,7)) mons.push(m);
+      let run=0; for(const m of mons){ run=cntOf(m)>=t?run+1:0; best=Math.max(best,run); }
+      let i=mons.length-1; if(i>=0&&cntOf(mons[i])<t) i--;                 // 이번 주 진행 중이면 지난주부터
+      while(i>=0&&cntOf(mons[i])>=t){cur++;i--;}
+    }
+    const wc=cntOf(curMon);
+    /* 최근 12주(이번 주 제외, 시작 이후) 중 목표를 채운 주 */
+    let ok=0,elig=0; for(let i=1;i<=12;i++){const m=addDays(curMon,-7*i); if(toISO(addDays(m,6))<startISO) continue; elig++; if(cntOf(m)>=t) ok++;}
+    return {h,t,daily,unit:daily?"일":"주",cell,cur,best,total:logged.length,startISO,
+      wc,weekPct:Math.min(1,wc/t),ok,elig,rate:elig?ok/elig:null,
+      records:[...logged].reverse(),todayOn:isLogged(h.id,today),started:startISO<=today};
   };
 
 
@@ -745,7 +771,7 @@ export default function App(){
       <SkyDefs/>
       <div className="wrap" style={{position:"relative",zIndex:1}}>
         {/* 헤더 — 일반적인 앱 헤더 형식: 가운데 화면 전환, 오른쪽 편지함 */}
-        <header ref={hdrRef} className="navbar" style={{paddingTop:16,paddingBottom:16,marginBottom:8}}>
+        <header className="navbar" style={{paddingTop:16,paddingBottom:16,marginBottom:8}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center"}}>
             <span/>
             <div className="gl" role="tablist" style={{...GLASS,borderRadius:999,display:"flex",gap:3,padding:3}}>
@@ -871,15 +897,14 @@ export default function App(){
         {!booting&&tab==="review"&&(
           <div className="fade">
             {/* 지난주 이맘때 vs 지금 — 과거의 나를 이기고 싶게 */}
-            <PaceCard C={C} p={paceOf(activeHabits)} color={activeColor}/>
+            <PaceCard C={C} p={paceOf(activeHabits)} color={activeColor} onOpen={openDetail}/>
 
             {(isNotion||person==="me")
               ? activeHabits.length>0&&
-                /* 목표별 회고 — 카드 하나 안에 습관을 차례로, 주차 레이블은 맨 위 한 번(스크롤해도 헤더 아래 고정) */
-                <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",display:"flex",flexDirection:"column",gap:24}}>
-                  <WeekLabels C={C} cells={chronicleOf(activeHabits[0]).cells}/>
+                /* 습관별 잔디밭 — 카드 하나 안에 차례로, 행을 누르면 상세 페이지 */
+                <div className="gl" style={{...GLASS,borderRadius:20,padding:"6px 6px",display:"flex",flexDirection:"column",gap:2}}>
                   {activeHabits.map(h=>(
-                    <ChronicleRow key={h.id} h={h} C={C} col={activeColor} d={chronicleOf(h)}/>
+                    <HabitGrassRow key={h.id} C={C} st={habitStats(h)} today={today} onOpen={()=>openDetail(h.id)}/>
                   ))}
                 </div>
               : <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -891,6 +916,8 @@ export default function App(){
           </div>
         )}
       </div>
+      {detailHabit&&<HabitDetail C={C} st={habitStats(detailHabit)} today={today} isNotion={isNotion}
+        onClose={closeDetail} onCheckToday={()=>toggleLog(detailHabit.id,today)}/>}
       {modal&&modal.type==="read"&&
         <LetterModal letter={modal.letter} onClose={closeLetter}
           onReply={()=>compose(modal.letter.from||partner)}/>}
@@ -1326,7 +1353,7 @@ function CheerCard({C,stars,name,onPraise}){
    ① 같은 요일까지만 비교한 헤드라인 숫자  ② 월→일 누적 선(지난주 점선 / 이번 주 실선)
    ③ 오늘 할 한 걸음  ④ 최고 기록에 가까울 때만 기록 안내 */
 const DAYS=["월","화","수","목","금","토","일"];
-function PaceCard({C,p,color}){
+function PaceCard({C,p,color,onOpen}){
   if(!p) return null;
   const {todayIdx,cur,prev,now,then,diff,next,onTrack,total,best,bestMon,projected}=p;
   const W=560,H=150,PX=24,PT=18,PB=14;
@@ -1334,32 +1361,38 @@ function PaceCard({C,p,color}){
   const X=(i)=>PX+(W-PX*2)*i/6, Y=(v)=>PT+(H-PT-PB)*(1-v/max);
   const pts=(arr,n)=>arr.slice(0,n).map((v,i)=>`${X(i)},${Y(v)}`).join(" ");
 
-  /* 무엇의 차이인지(습관 체크 횟수) 문장 안에서 바로 읽히게 */
-  const head=diff>0?<>지난주 이맘때보다 <b style={{color:"var(--acc)"}}>{diff}번 더</b> 체크했어요</>
-    :diff===0?<>지난주 이맘때만큼 <b style={{color:"var(--acc)"}}>똑같이</b> 체크했어요</>
-    :<>지난주 이맘때보다 <b style={{color:"var(--acc)"}}>{-diff}번 덜</b> 했어요, 아직 따라잡을 수 있어요</>;
-  const step=next
-    ? (diff>=0?`오늘 ‘${next.name}’ 하면 +${diff+1}번으로 앞서가요`
-      :diff===-1?`오늘 ‘${next.name}’ 하면 지난주와 같아져요`
-      :`오늘 ‘${next.name}’ 하면 ${-diff-1}번 차이로 좁혀져요`)
-    : `이 속도면 이번 주 목표 ${onTrack}/${total}개를 채울 수 있어요`;
+  /* 글은 줄이고 숫자·칩으로: 큰 숫자 + 짧은 라벨 / 범례에 횟수 / 다음 행동 칩 / 최고 기록 배지 */
+  const big=diff>0?`+${diff}`:diff===0?"=":`${diff}`;
+  const label=diff>0?"지난주 이맘때보다 더 체크했어요":diff===0?"지난주 이맘때와 똑같아요":"지난주 이맘때보다 덜 했어요";
   const wk=bestMon&&weekOfMonth(bestMon);
-  /* 기록이 너무 작으면(3번 미만) 의미가 없어서 숨김. 같으면 '한 번만 더' */
-  const bestLine=best>=3&&(now>best?"최고 기록 경신 중 ✦"
-    :now===best?"한 번만 더 하면 최고 기록이에요 ✦"
-    :projected>=best*0.8?`최고 기록 ${wk.m}월 ${wk.w}주차 ${best}번 · ${best-now}번 남음`:null);
+  /* 기록이 너무 작으면(3번 미만) 숨김 */
+  const badge=best>=3&&(now>best?"🏆 최고 기록 경신 중"
+    :now===best?"🏆 한 번만 더 하면 최고"
+    :projected>=best*0.8?`🏆 최고 ${best}번 · ${best-now}번 남음`:null);
+  const chipGain=next&&(diff>=0?`+${diff+1}`:diff===-1?"동점":`${diff+1}`);
+  const leg=(line,txt,n)=>(<span style={{display:"flex",alignItems:"center",gap:6}}>{line}{txt}
+    <b style={{color:C.ink,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{n}</b></span>);
 
   return(
     <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",marginBottom:60,
       display:"flex",flexDirection:"column"}}>
-      <div style={{fontSize:19,fontWeight:700,letterSpacing:"-0.01em",lineHeight:1.4,wordBreak:"keep-all"}}>{head}</div>
-      <div className="mono" style={{fontSize:13,color:C.sub,marginTop:6}}>월요일부터 오늘까지 습관 체크 {now}번 · 지난주엔 {then}번</div>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+        <div style={{minWidth:0}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:4}}>
+            <span style={{fontSize:40,fontWeight:800,letterSpacing:"-0.03em",lineHeight:1,color:"var(--acc)",fontVariantNumeric:"tabular-nums"}}>{big}</span>
+            {diff!==0&&<span style={{fontSize:18,fontWeight:700,color:"var(--acc)"}}>번</span>}
+          </div>
+          <div style={{fontSize:13,color:C.sub,marginTop:6}}>{label}</div>
+        </div>
+        {badge&&<span style={{flex:"0 0 auto",fontSize:12,fontWeight:700,color:"var(--acc)",background:"rgba(var(--acc-rgb),.14)",
+          borderRadius:999,padding:"6px 10px",whiteSpace:"nowrap"}}>{badge}</span>}
+      </div>
 
-      <div style={{display:"flex",flexDirection:"column",marginTop:14}}>
-        {/* 범례 — 그래프 선과 겹치지 않게 별도 줄 */}
-        <div style={{display:"flex",justifyContent:"flex-end",gap:12,fontSize:12,color:C.sub,marginBottom:6}}>
-          <span style={{display:"flex",alignItems:"center",gap:5}}><i style={{width:14,height:3,borderRadius:2,background:color}}/>이번 주</span>
-          <span style={{display:"flex",alignItems:"center",gap:5}}><i style={{width:14,height:0,borderTop:"2px dashed rgba(255,255,255,.4)"}}/>지난주</span>
+      <div style={{display:"flex",flexDirection:"column",marginTop:16}}>
+        {/* 범례 + 이번 주/지난주 같은 때까지의 체크 수 */}
+        <div style={{display:"flex",justifyContent:"flex-end",gap:14,fontSize:12,color:C.sub,marginBottom:6}}>
+          {leg(<i style={{width:14,height:3,borderRadius:2,background:color}}/>,"이번 주",now)}
+          {leg(<i style={{width:14,height:0,borderTop:"2px dashed rgba(255,255,255,.4)"}}/>,"지난주",then)}
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{display:"block",overflow:"visible"}} aria-hidden="true">
           {/* 지난주: 옅은 점선 (한 주 전체) */}
@@ -1377,92 +1410,163 @@ function PaceCard({C,p,color}){
         </div>
       </div>
 
-      <div style={{marginTop:14,fontSize:14,lineHeight:1.5,color:C.ink,wordBreak:"keep-all"}}>{step}</div>
-      {bestLine&&<div style={{marginTop:4,fontSize:13,color:"var(--acc)",fontWeight:600}}>{bestLine}</div>}
+      {/* 다음 한 걸음 — 누르면 그 습관 상세(오늘 체크하기)로 */}
+      {next
+        ? <button className="btn" onClick={()=>onOpen&&onOpen(next.id)}
+            style={{...BTN_FILL,marginTop:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
+              width:"100%",padding:"12px 16px",borderRadius:14,fontSize:14,textAlign:"left"}}>
+            <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>오늘 ‘{next.name}’ 하면</span>
+            <span style={{flex:"0 0 auto",fontWeight:800}}>{chipGain} ›</span>
+          </button>
+        : <div style={{marginTop:16,fontSize:13,color:C.sub}}>이 속도면 목표 {onTrack}/{total}개 달성</div>}
     </div>
   );
 }
 
-/* ── 목표별 회고 ── */
-const BAR_GAP=5;
-/* 6칸 중 i번째부터 n칸을 덮는 위치 (칸 사이 간격 포함) */
-const spanPos=(i,n,cols)=>({
-  left:`calc((100% - ${(cols-1)*BAR_GAP}px) / ${cols} * ${i} + ${i*BAR_GAP}px)`,
-  width:`calc((100% - ${(cols-1)*BAR_GAP}px) / ${cols} * ${n} + ${(n-1)*BAR_GAP}px)`,
-});
-/* 연속으로 목표를 채운 주 묶음 (2주 이상) → [{start,len}] */
-const comboRuns=(cells)=>{
-  const out=[];let st=-1;
-  cells.forEach((c,i)=>{
-    if(c.complete){if(st<0)st=i;}
-    else{if(st>=0&&i-st>=2)out.push({start:st,len:i-st});st=-1;}
+/* ── 잔디밭 ─────────────────────────────────────────────
+   세로 7칸(월~일) × N주. 칸 크기는 폭에 맞춰 늘어남(그리드 1fr + 정사각형). */
+const GRASS_BG={full:"var(--acc)",part:"rgba(var(--acc-rgb),.38)",empty:"rgba(255,255,255,.07)",
+  pre:"rgba(255,255,255,.025)",future:"transparent"};
+function Grass({cell,endISO,weeks,today,gap=3,radius=3,showMonths=false,showDays=false}){
+  const endMon=mondayOf(fromISO(endISO));
+  const cols=Array.from({length:weeks},(_,i)=>addDays(endMon,-(weeks-1-i)*7));
+  /* 그 주에 1일이 있으면(또는 첫 칸이면) 월 표시 */
+  const monthAt=cols.map((m,i)=>{const d=weekDatesFrom(m).find(x=>x.endsWith("-01"));return d?fromISO(d).getMonth()+1:i===0?m.getMonth()+1:null;});
+  const lab={fontSize:12,color:"#A3A2BD",lineHeight:1,whiteSpace:"nowrap"};
+  /* 요일 라벨·월 라벨·칸을 한 그리드에 넣어 항상 줄이 맞도록 (열 단위로 채움) */
+  const kids=[];
+  if(showDays){
+    if(showMonths) kids.push(<span key="dm"/>);
+    DAYS.forEach((d,i)=>kids.push(<span key={"d"+i} style={{...lab,display:"flex",alignItems:"center",paddingRight:4,visibility:i%2===0?"visible":"hidden"}}>{d}</span>));
+  }
+  cols.forEach((m,ci)=>{
+    if(showMonths) kids.push(<span key={"m"+ci} style={{...lab,width:0,overflow:"visible",alignSelf:"end"}}>{monthAt[ci]?`${monthAt[ci]}월`:""}</span>);
+    weekDatesFrom(m).forEach(iso=>{
+      const st=cell(iso);
+      kids.push(<span key={iso} title={iso} style={{aspectRatio:"1",borderRadius:radius,background:GRASS_BG[st],
+        boxShadow:iso===today?"0 0 0 1.5px rgba(255,255,255,.85)":st==="full"?"0 0 6px rgba(var(--acc-rgb),.35)":"none"}}/>);
+    });
   });
-  if(st>=0&&cells.length-st>=2)out.push({start:st,len:cells.length-st});
-  return out;
-};
-
-function ChronicleRow({h,C,col,d}){
-  /* 막대 높이 = 그 주의 달성률. 꽉 찬 막대 = 그 주 목표 달성.
-     연속으로 채운 주들은 칸을 나누지 않고 하나로 이어 '콤보'로 보여줍니다. */
-  const H=38, n=d.cells.length;
-  const runs=comboRuns(d.cells);
-  const inRun=new Set(runs.flatMap(r=>Array.from({length:r.len},(_,k)=>r.start+k)));
-  const lastRun=runs.length?runs[runs.length-1]:null;
   return(
-    <div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
-        <span style={{fontSize:16,fontWeight:700,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</span>
-        {/* 가장 최근의 연속 달성 — 강조색 + 🔥 */}
-        {lastRun&&<span style={{fontSize:13,flex:"0 0 auto",fontWeight:700,color:"var(--acc)"}}>🔥 {lastRun.len}주 연속</span>}
-      </div>
-
-      <div style={{position:"relative"}}>
-        <div style={{display:"flex",gap:BAR_GAP}}>
-          {d.cells.map((c,i)=>(
-            /* 시작 전의 주는 빗금 + 흐리게 — 비어 있는 '못 한 주'와 구분됩니다 */
-            <div key={i} title={`${weekRangeLabel(c.mon)} ${c.pre?"시작 전":`${c.done}/${c.target}`}`}
-              style={{flex:1,minWidth:0,height:H,borderRadius:6,position:"relative",overflow:"hidden",
-                background:c.pre
-                  ?"repeating-linear-gradient(135deg,#ffffff0a 0 2px,transparent 2px 6px)"
-                  :inRun.has(i)?"transparent":C.lineSoft,   // 콤보 칸은 위 블록이 덮으므로 비워둠
-                opacity:c.pre?0.5:1}}>
-              {!c.pre&&!inRun.has(i)&&<div style={{position:"absolute",left:0,right:0,bottom:0,
-                height:`${Math.max(c.ratio*100, c.ratio>0?12:0)}%`,
-                background:col}}/>}   {/* 반투명 없이 단색 — 달성률은 막대 높이로 */}
-            </div>
-          ))}
-        </div>
-        {/* 콤보: 연속 달성한 주들을 한 덩어리로 */}
-        {runs.map(r=>(
-          <div key={r.start} title={`${r.len}주 연속 달성`}
-            style={{position:"absolute",top:0,height:H,...spanPos(r.start,r.len,n),background:col,borderRadius:6,boxShadow:`0 0 16px ${col}55`}}/>
-        ))}
-      </div>
+    <div style={{display:"grid",gridTemplateColumns:`${showDays?"auto ":""}repeat(${weeks},minmax(0,1fr))`,
+      gridTemplateRows:`${showMonths?"16px ":""}repeat(7,auto)`,gridAutoFlow:"column",columnGap:gap,rowGap:gap,minWidth:0}}>
+      {kids}
     </div>
   );
 }
 
-/* 주차 레이블 — 회고 카드 맨 위 한 번, 스크롤 중에도 헤더 아래 붙어 있음. '월'은 달이 바뀌는 칸에만(12px 한 줄에 넣기 위해).
-   첫 칸에도 붙이되, 바로 다음 칸에서 달이 바뀌면(긴 레이블 두 개가 붙음) 생략 */
-function WeekLabels({C,cells}){
-  const months=cells.map(c=>weekOfMonth(c.mon).m);
-  const starts=months.map((m,i)=>i>0&&m!==months[i-1]);
-  const showMonth=months.map((m,i)=>i===0?!starts[1]:starts[i]);
+/* 회고 목록의 한 행 — 이름 + 연속 기록, 최근 16주 잔디, 누르면 상세 */
+function HabitGrassRow({C,st,today,onOpen}){
   return(
-    <div data-wk style={{display:"flex",gap:BAR_GAP,marginBottom:-12,position:"sticky",top:"var(--hdr,72px)",zIndex:2,
-      margin:"-6px -16px -12px",padding:"8px 16px",borderRadius:12,
-      background:"rgba(6,6,14,.72)",WebkitBackdropFilter:"blur(12px)",backdropFilter:"blur(12px)"}}>
-      {cells.map((c,i)=>{
-        const wk=weekOfMonth(c.mon);
-        return(
-          /* 긴 "10월 1주차"는 칸보다 조금 넓어서 양옆 여백으로 살짝 넘칩니다(이웃은 짧은 "n주차"라 안 겹침) */
-          <div key={i} style={{flex:1,minWidth:0,display:"flex",justifyContent:"center",whiteSpace:"nowrap",
-            letterSpacing:"-0.02em",fontSize:"clamp(11px, 3.4vw, 12px)",color:c.current?C.ink:C.sub,fontWeight:c.current?700:500,
-            opacity:c.current?1:0.75}}>
-            {showMonth[i]?`${wk.m}월 ${wk.w}주차`:`${wk.w}주차`}
+    <button className="btn row-tap" onClick={onOpen} aria-label={`${st.h.name} 자세히 보기`}
+      style={{display:"block",width:"100%",textAlign:"left",background:"transparent",border:"none",color:"inherit",
+        padding:"14px 10px",borderRadius:14,fontFamily:"inherit"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:10}}>
+        <span style={{fontSize:16,fontWeight:700,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{st.h.name}</span>
+        <span style={{display:"flex",alignItems:"center",gap:8,flex:"0 0 auto"}}>
+          {st.cur>0&&<span style={{fontSize:13,fontWeight:700,color:"var(--acc)"}}>🔥 {st.cur}{st.unit} 연속</span>}
+          <span aria-hidden="true" style={{fontSize:18,color:C.sub,lineHeight:1}}>›</span>
+        </span>
+      </div>
+      <Grass cell={st.cell} endISO={today} weeks={16} today={today}/>
+    </button>
+  );
+}
+
+/* ── 습관 상세 페이지 ── 큰 잔디 · 통계 타일 4개 · 월별 기록 */
+const PAGE_WEEKS=22;
+function HabitDetail({C,st,today,isNotion,onClose,onCheckToday}){
+  const [page,setPage]=useState(0);          // 0 = 이번 주에서 끝나는 22주, 1 = 그 이전 22주 …
+  const maxPage=Math.floor(52/PAGE_WEEKS);
+  const endISO=toISO(addDays(mondayOf(fromISO(today)),-7*PAGE_WEEKS*page+6));
+  const startISO=toISO(addDays(fromISO(endISO),-(7*PAGE_WEEKS-1)));
+  const md=(iso)=>{const d=fromISO(iso);return `${d.getMonth()+1}월 ${d.getDate()}일`;};
+  useEffect(()=>{ const o=document.body.style.overflow; document.body.style.overflow="hidden"; return()=>{document.body.style.overflow=o;}; },[]);
+  useEffect(()=>{const esc=(e)=>{if(e.key==="Escape")onClose();};document.addEventListener("keydown",esc);return()=>document.removeEventListener("keydown",esc);},[onClose]);
+
+  /* 월별 기록 */
+  const byMonth=[]; for(const iso of st.records){const k=iso.slice(0,7);let g=byMonth[byMonth.length-1];if(!g||g.k!==k){g={k,items:[]};byMonth.push(g);}g.items.push(iso);}
+  const circle={...BTN_FILL,width:40,height:40,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,textDecoration:"none"};
+  const tile=(icon,label,big,foot,extra)=>(
+    <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",display:"flex",flexDirection:"column",minHeight:148}}>
+      <div style={{fontSize:13,fontWeight:600,color:C.ink}}>{icon} {label}</div>
+      <div style={{fontSize:40,fontWeight:800,letterSpacing:"-0.02em",color:"var(--acc)",margin:"auto 0 6px",fontVariantNumeric:"tabular-nums"}}>{big}</div>
+      {extra}
+      <div style={{fontSize:12,color:C.sub}}>{foot}</div>
+    </div>
+  );
+  return(
+    <div role="dialog" aria-modal="true" aria-label={`${st.h.name} 기록`}
+      style={{position:"fixed",inset:0,zIndex:90,overflowY:"auto",WebkitOverflowScrolling:"touch",
+        background:"linear-gradient(180deg,#040409 0%,#06060E 55%,#0A0918 100%)",animation:reduceMotion?"none":"fade .2s ease"}}>
+      <div className="wrap" style={{paddingTop:16}}>
+        {/* 헤더: 뒤로 · 이름 · 노션에서 수정 */}
+        <div style={{display:"grid",gridTemplateColumns:"40px 1fr 40px",alignItems:"center",gap:12,marginBottom:20}}>
+          <button className="btn" onClick={onClose} aria-label="뒤로" style={circle}>‹</button>
+          <div style={{textAlign:"center",fontSize:17,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            <span className="emo" style={{marginRight:6}}>{emojiOf(st.h)}</span>{st.h.name}
           </div>
-        );
-      })}
+          {isNotion
+            ? <a href={`https://www.notion.so/${String(st.h.id).replace(/-/g,"")}`} target="_blank" rel="noopener noreferrer"
+                aria-label="노션에서 수정" style={circle}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </a>
+            : <span/>}
+        </div>
+
+        {/* 큰 잔디 + 기간 넘김 */}
+        <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px 14px",marginBottom:12}}>
+          <Grass cell={st.cell} endISO={endISO} weeks={PAGE_WEEKS} today={today} showMonths showDays/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:14}}>
+            <button className="btn" onClick={()=>setPage(p=>Math.min(maxPage,p+1))} disabled={page>=maxPage} aria-label="이전 기간"
+              style={{...circle,width:34,height:34,opacity:page>=maxPage?.35:1}}>‹</button>
+            <span style={{fontSize:13,color:C.sub}}>{md(startISO)} — {md(endISO>today?today:endISO)}</span>
+            <button className="btn" onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} aria-label="다음 기간"
+              style={{...circle,width:34,height:34,opacity:page===0?.35:1}}>›</button>
+          </div>
+          {st.started&&!st.todayOn&&page===0&&
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginTop:14,paddingTop:14,
+              borderTop:"1px solid rgba(255,255,255,.08)"}}>
+              <span style={{fontSize:14,color:C.ink}}>오늘 칸이 비어 있어요</span>
+              <button className="btn" onClick={onCheckToday} style={{...BTN_FILL,padding:"8px 14px",fontSize:13}}>오늘 체크하기</button>
+            </div>}
+        </div>
+
+        {/* 통계 타일 2×2 */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:60}}>
+          {tile("🔥","연속",`${st.cur}${st.unit}`,`최고 ${st.best}${st.unit}`)}
+          {tile("✓","총 체크",st.total,`시작 ${md(st.startISO)}`)}
+          {tile("🎯","이번 주 목표",`${Math.min(st.wc,st.t)}/${st.t}`,st.wc>=st.t?"이번 주 목표 달성!":`${st.t-st.wc}번 남았어요`,
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,.08)",marginBottom:8,overflow:"hidden"}}>
+              <div style={{width:`${st.weekPct*100}%`,height:"100%",background:"var(--acc)",borderRadius:2}}/></div>)}
+          {tile("⭐","달성률",st.rate==null?"–":`${Math.round(st.rate*100)}%`,st.elig?`최근 ${st.elig}주 중 ${st.ok}주 달성`:"아직 지난 기록이 없어요")}
+        </div>
+
+        {/* 월별 기록 */}
+        <div style={{fontSize:20,fontWeight:700,marginBottom:12}}>기록</div>
+        {byMonth.length===0
+          ? <div style={{fontSize:14,color:C.sub}}>아직 체크한 날이 없어요</div>
+          : byMonth.slice(0,6).map(g=>{
+              const [y,m]=g.k.split("-");
+              return(
+                <div key={g.k} style={{marginBottom:20}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"0 2px 8px"}}>
+                    <span style={{fontSize:14,color:C.sub}}>{y}년 {Number(m)}월</span>
+                    <span style={{fontSize:12,fontWeight:700,color:"var(--on-acc)",background:"var(--acc)",borderRadius:999,padding:"2px 9px"}}>{g.items.length}</span>
+                  </div>
+                  <div className="gl" style={{...GLASS,borderRadius:16,padding:"4px 16px"}}>
+                    {g.items.map((iso,i)=>{const d=fromISO(iso);return(
+                      <div key={iso} style={{display:"flex",justifyContent:"space-between",padding:"12px 0",fontSize:15,
+                        borderTop:i?"1px solid rgba(255,255,255,.06)":"none"}}>
+                        <span>{d.getMonth()+1}월 {d.getDate()}일</span>
+                        <span style={{color:C.sub}}>{DAYS[(d.getDay()+6)%7]}요일</span>
+                      </div>);})}
+                  </div>
+                </div>
+              );
+            })}
+      </div>
     </div>
   );
 }
