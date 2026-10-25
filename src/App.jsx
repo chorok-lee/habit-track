@@ -136,44 +136,50 @@ const LAYOUTS = {
   7: [[-38,8],[-22,-24],[0,26],[20,-20],[38,4],[18,28],[-16,14]],
   8: [[-40,0],[-24,-26],[-6,20],[16,-22],[36,8],[28,30],[6,-4],[-20,26]],
 };
-/* 9개 이상 — 동그라미 대신 실제 별자리처럼: 타원 안에 고르게 흩뿌리고(해바라기 배치 + 흔들기),
-   서로 너무 붙은 별은 밀어낸 뒤, 가까운 별끼리 가지 치듯 잇습니다(최소 신장 트리 + 작은 고리 하나).
-   seed가 같으면 언제나 같은 모양 — 초록·소운의 별자리는 서로 다른 모양이 됩니다 */
-const layoutFor = (n, seed=0) => {
-  if (LAYOUTS[n]) return LAYOUTS[n];
-  const RX=48, RY=33, GOLD=2.39996;
-  const pts=Array.from({length:n},(_,i)=>{
-    const r=Math.sqrt((i+.5)/n)*(.82+rnd(i,seed+3)*.3);
-    const a=i*GOLD+seed*1.7+(rnd(i,seed+7)-.5)*.9;
-    return [Math.cos(a)*r*RX, Math.sin(a)*r*RY];
-  });
-  /* 겹침 풀기 — 최소 간격을 지키도록 몇 번 밀어내고, 타원 밖으로 나가면 안쪽으로 */
-  const minD=Math.min(17, 64/Math.sqrt(n));
-  for(let it=0;it<40;it++){
-    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
-      const dx=pts[j][0]-pts[i][0],dy=(pts[j][1]-pts[i][1])*1.25,d=Math.hypot(dx,dy)||.01;
-      if(d<minD){const k=(minD-d)/d/2;pts[i][0]-=dx*k;pts[i][1]-=dy*k/1.25;pts[j][0]+=dx*k;pts[j][1]+=dy*k/1.25;}
-    }
-    for(const p of pts){const e=Math.hypot(p[0]/RX,p[1]/RY);if(e>1){p[0]/=e;p[1]/=e;}}
-  }
-  return pts;
+/* 9개 이상 — 실제 별자리 모양을 빌려옵니다. 선은 듬성듬성, 가지는 적게 (진짜 성도처럼).
+   좌표 범위 x ±48, y ±33. edges = 이어줄 별 번호 쌍 */
+const SKY_FIGURES = {
+  /* 사자자리 — 꼬리(데네볼라)·몸통 삼각형·머리의 낫 모양 */
+  9:{pts:[[-46,6],[-18,-6],[-16,12],[22,16],[24,2],[20,-10],[26,-22],[38,-30],[44,-18]],
+     edges:[[0,1],[0,2],[1,2],[1,5],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8]]},
+  /* 쌍둥이자리 — 카스토르·폴룩스 두 몸이 나란히 */
+  10:{pts:[[-34,-26],[-16,-30],[-24,-6],[-2,-10],[-12,14],[12,8],[-4,30],[10,32],[28,22],[42,28]],
+     edges:[[0,1],[0,2],[2,4],[4,6],[4,7],[1,3],[3,5],[5,8],[5,9],[2,3]]},
+  /* 처녀자리 — 길게 뻗은 팔과 스피카 */
+  11:{pts:[[-46,-6],[-32,8],[-16,10],[-6,-4],[8,-12],[0,24],[20,-2],[30,-24],[36,-8],[46,-16],[22,14]],
+     edges:[[0,1],[1,2],[2,3],[3,4],[4,7],[3,6],[6,8],[8,9],[6,10],[2,5]]},
+  /* 황소자리 — 히아데스의 V, 긴 뿔 두 개, 플레이아데스 쪽 등줄기 */
+  12:{pts:[[14,10],[4,2],[-8,-8],[-34,-28],[2,18],[-14,14],[-42,-2],[26,-2],[34,-14],[42,-28],[30,20],[44,28]],
+     edges:[[0,1],[1,2],[2,3],[0,4],[4,5],[5,6],[0,7],[7,8],[8,9],[7,10],[10,11]]},
+  /* 큰곰자리 — 북두칠성 국자 + 머리 + 다리 */
+  13:{pts:[[-46,-20],[-34,-26],[-22,-22],[-10,-14],[-6,2],[14,2],[12,-16],[28,-24],[44,-18],[-14,18],[-24,30],[24,18],[36,28]],
+     edges:[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,3],[6,7],[7,8],[4,9],[9,10],[5,11],[11,12]]},
+  /* 오리온자리 — 어깨·허리띠 세 별·발, 몽둥이와 방패 */
+  14:{pts:[[-14,-20],[12,-18],[-2,-32],[-8,0],[0,-2],[8,-4],[-14,26],[16,24],[-28,-26],[-40,-32],[2,12],[32,-28],[38,-12],[34,6]],
+     edges:[[2,0],[2,1],[0,3],[1,5],[3,4],[4,5],[3,6],[5,7],[0,8],[8,9],[4,10],[1,12],[11,12],[12,13]]},
+  /* 전갈자리 — 집게에서 안타레스를 지나 갈고리 꼬리까지 */
+  15:{pts:[[40,-30],[46,-16],[42,-2],[30,-14],[20,-12],[10,-6],[2,0],[-6,6],[-12,16],[-16,26],[-26,32],[-36,30],[-44,22],[-46,10],[-38,4]],
+     edges:[[0,3],[1,3],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12],[12,13],[13,14]]},
+  /* 궁수자리 — 찻주전자 몸통·뚜껑·주둥이·손잡이, 활과 화살 */
+  16:{pts:[[-10,-6],[8,-8],[10,10],[-8,12],[-2,-22],[28,4],[-24,-8],[-26,10],[30,-20],[42,-28],[-36,-20],[-46,-28],[-38,22],[-46,30],[16,26],[6,32]],
+     edges:[[0,1],[1,2],[2,3],[3,0],[0,4],[4,1],[1,5],[2,5],[0,6],[6,7],[7,3],[1,8],[8,9],[6,10],[10,11],[7,12],[12,13],[2,14],[14,15]]},
 };
-/* 가까운 별끼리 잇기 — 최소 신장 트리(가지 모양)에, 짧은 고리 하나를 더해 단조롭지 않게 */
-const treeEdges = (pts) => {
-  const n=pts.length, d=(i,j)=>Math.hypot(pts[i].x-pts[j].x,pts[i].y-pts[j].y);
-  const inT=new Set([0]), edges=[];
-  while(inT.size<n){
-    let best=null;
-    for(const i of inT)for(let j=0;j<n;j++)if(!inT.has(j)&&(!best||d(i,j)<best[2]))best=[i,j,d(i,j)];
-    edges.push([best[0],best[1]]); inT.add(best[1]);
+/* 16개 넘게 — 궁수자리에 남는 별을 위쪽 은하수 줄기처럼 이어 붙임 */
+const figureFor = (n) => {
+  if (SKY_FIGURES[n]) return SKY_FIGURES[n];
+  const base=SKY_FIGURES[16], k=n-16;
+  const pts=[...base.pts], edges=[...base.edges];
+  for(let i=0;i<k;i++){
+    const t=k===1?.5:i/(k-1);
+    pts.push([-30+t*60, -34+Math.sin(t*Math.PI)*-4+(i%2?4:0)]);
+    edges.push(i===0?[4,16]:[15+i,16+i]);
   }
-  if(n>=10){
-    const has=new Set(edges.map(([a,b])=>a<b?`${a}-${b}`:`${b}-${a}`));
-    let extra=null;
-    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)if(!has.has(`${i}-${j}`)&&(!extra||d(i,j)<extra[2]))extra=[i,j,d(i,j)];
-    if(extra)edges.push([extra[0],extra[1]]);
-  }
-  return edges;
+  return {pts,edges};
+};
+/* mirror: 오른쪽(소운) 별자리는 좌우를 뒤집어 같은 개수여도 다른 하늘처럼 */
+const layoutFor = (n, mirror=false) => {
+  const pts = LAYOUTS[n] || figureFor(n).pts;
+  return mirror ? pts.map(([x,y])=>[-x,y]) : pts;
 };
 
 const toISO=(d)=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return `${y}-${m}-${day}`;};
@@ -1388,7 +1394,7 @@ function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSe
 
 function buildPoints(stars, center, scale=1.0){
   const n=stars.length; if(!n) return [];
-  const layout=layoutFor(n, center[0]%7);
+  const layout=layoutFor(n, center[0]>280);
   return stars.map((s,i)=>({id:s.id, x:center[0]+layout[i][0]*scale, y:center[1]+layout[i][1]*scale}));
 }
 
@@ -1399,7 +1405,7 @@ function OneStar({stars,pts,color,allComplete,selStar,onSelect,dim,scale=1}){
   const order=connOrder(stars.length);
   const pairs=LAYOUTS[stars.length]
     ? order.slice(1).map((b,k)=>[node(order[k]),node(b)])
-    : treeEdges(pts).map(([a,b])=>[node(a),node(b)]);
+    : figureFor(stars.length).edges.map(([a,b])=>[node(a),node(b)]);
   return(
     <g opacity={dim?0.6:1}>
       <ConstLines pairs={pairs} scale={scale}/>
