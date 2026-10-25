@@ -13,6 +13,8 @@ export const CFG = {
   get habitsDb() { return process.env.NOTION_HABITS_DB || "19760626b3fd4df8bc4cf8c651701e0f"; },
   get logsDb()   { return process.env.NOTION_LOGS_DB   || "45ad9d239ec64ad1a5a24d305aa2ad41"; },
   get messagesDb(){ return process.env.NOTION_MESSAGES_DB || ""; },
+  /* 습관 메모 DB — 기본값은 앱이 만든 '습관 메모' DB (습관 트래커 페이지 안) */
+  get notesDb()  { return process.env.NOTION_NOTES_DB || "ac1ebb76edb145439c5cb053082a1b4c"; },
   get me()       { return process.env.NOTION_ME || "초록"; },
 };
 

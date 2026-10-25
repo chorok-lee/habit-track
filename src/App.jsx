@@ -293,6 +293,10 @@ export default function App(){
   /* 별똥별 편지 */
   const [letters,setLetters]=useState([]);
   const [modal,setModal]=useState(null);   // {type:"read"|"compose"|"box", letter, to}
+  /* 습관 메모 — { "습관id|YYYY-MM-DD": "메모" }. 노션 '습관 메모' DB(없거나 연결 전이면 조용히 꺼짐) */
+  const [notes,setNotes]=useState(()=>cache0?.notes||{});
+  const [notesOn,setNotesOn]=useState(()=>!!cache0?.notes);
+  const [noteFor,setNoteFor]=useState(null);   // {h, date} — 메모 작성 창
   /* 습관 상세 — 주소에 #habit/<id>를 붙여 폰의 뒤로가기로 닫히게 */
   const hashId=()=>{const m=(window.location.hash||"").match(/^#habit\/(.+)$/);return m?decodeURIComponent(m[1]):null;};
   const [detailId,setDetailId]=useState(hashId);
@@ -357,7 +361,33 @@ export default function App(){
     }catch(e){ /* 다음에 앱으로 돌아올 때 다시 시도 */ }
   };
 
+  const noteKey=(id,d)=>`${id}|${d}`;
+  const loadNotes=async()=>{
+    try{
+      const from=toISO(addDays(mondayOf(new Date()),-53*7)),to=toISO(new Date());
+      const r=await api(`/api/notes?from=${from}&to=${to}`);
+      const m={}; for(const n of r?.notes||[]) m[noteKey(n.habitId,n.date)]=n.text;
+      setNotes(m); setNotesOn(true);
+    }catch(e){ setNotesOn(false); }
+  };
+  /* 저장: 화면 먼저 바꾸고 노션에 기록, 실패하면 되돌림. 빈 글이면 삭제 */
+  const saveNote=async(h,d,text)=>{
+    const k=noteKey(h.id,d), before=notes[k]||"", t=text.trim();
+    setNotes(prev=>{const n={...prev}; if(t) n[k]=t; else delete n[k]; return n;});
+    if(sync.mode!=="notion"){ return true; }
+    try{ await api("/api/notes",{method:"PUT",body:JSON.stringify({habitId:h.id,date:d,text:t})}); return true; }
+    catch(e){
+      setNotes(prev=>{const n={...prev}; if(before) n[k]=before; else delete n[k]; return n;});
+      setToast(e.message||"메모를 저장하지 못했어요."); return false;
+    }
+  };
+  const openNote=(h,d)=>{
+    if(sync.mode==="notion"&&!notesOn){ setToast("노션 '습관 메모' DB에 Integration을 연결하면 메모를 쓸 수 있어요"); return; }
+    primeKeyboard(); setNoteFor({h,date:d});
+  };
+
   const loadFromLocal=()=>{
+    try{const n=JSON.parse(LS.get("hr_notes")||"{}");setNotes(n);setNotesOn(true);}catch(e){}
     const h=LS.get("hr_habits"),l=LS.get("hr_logs");
     const v=Number(LS.get("hr_version"))||1;
     if(h){try{let p=JSON.parse(h);if(v<HABITS_VERSION)p=migrateHabits(p);setHabits(p);}catch{setHabits(DEFAULT_HABITS);}}
@@ -386,6 +416,7 @@ export default function App(){
       setStaleWarn("");
       loadLetters((LS.get("hr_me")||info.me||DEMO_ME_NAME));
       loadOlder(info.from);
+      loadNotes();
     }
     catch(e){
       /* 이미 노션 데이터(저장해 둔 것 포함)를 보여주는 중이면 그대로 두고 한 줄만 알림 */
@@ -417,8 +448,9 @@ export default function App(){
   /* 노션 모드: 다음에 바로 띄울 수 있도록 마지막 데이터를 저장 */
   useEffect(()=>{
     if(!loaded||sync.mode!=="notion"||!hsRef.current)return;
-    LS.set(CACHE_KEY,JSON.stringify({hs:hsRef.current,logs,savedAt:Date.now()}));
-  },[habits,logs,loaded,sync.mode]);
+    LS.set(CACHE_KEY,JSON.stringify({hs:hsRef.current,logs,notes:notesOn?notes:undefined,savedAt:Date.now()}));
+  },[habits,logs,notes,notesOn,loaded,sync.mode]);
+  useEffect(()=>{if(loaded&&sync.mode==="local")LS.set("hr_notes",JSON.stringify(notes));},[notes,loaded,sync.mode]);
   useEffect(()=>{try{localStorage.setItem("hr_person",person);}catch(e){}},[person]);
 
   const today=toISO(new Date());
@@ -430,6 +462,19 @@ export default function App(){
     const out={...prev,[d]:next};if(!next.length)delete out[d];return out;
   });
   /* 체크 → 화면 먼저 바꾸고(낙관적 업데이트) 노션에 기록. 실패하면 되돌림 */
+  /* 길게 누르기(0.45초) → 메모. 짧게 누르기 → 체크. 길게 누른 뒤 손을 뗄 때 창을 열어 키보드가 뜨게 */
+  const press=useRef({t:null,armed:false,x:0,y:0,skip:false});
+  const [pressing,setPressing]=useState(null);
+  const longPress=(h,onTap)=>({
+    onPointerDown:(e)=>{const p=press.current;clearTimeout(p.t);p.armed=false;p.x=e.clientX;p.y=e.clientY;
+      p.t=setTimeout(()=>{p.armed=true;setPressing(h.id);try{navigator.vibrate&&navigator.vibrate(12);}catch(_){}} ,450);},
+    onPointerMove:(e)=>{const p=press.current;if(Math.hypot(e.clientX-p.x,e.clientY-p.y)>10){clearTimeout(p.t);if(!p.armed)p.t=null;}},
+    onPointerUp:()=>{const p=press.current;clearTimeout(p.t);if(p.armed){p.armed=false;p.skip=true;setPressing(null);openNote(h,selDate);}},
+    onPointerCancel:()=>{const p=press.current;clearTimeout(p.t);p.armed=false;setPressing(null);},
+    onContextMenu:(e)=>e.preventDefault(),
+    onClick:()=>{const p=press.current;if(p.skip){p.skip=false;return;}onTap();},
+  });
+
   const toggleLog=async(id,d)=>{
     const wasOn=isLogged(id,d);
     lastToggle.current=Date.now();
@@ -595,7 +640,10 @@ export default function App(){
     let ok=0,elig=0; for(let i=1;i<=12;i++){const m=addDays(curMon,-7*i); if(toISO(addDays(m,6))<startISO) continue; elig++; if(cntOf(m)>=t) ok++;}
     return {h,t,daily,unit:daily?"일":"주",cell,cur,best,total:logged.length,startISO,
       wc,weekPct:Math.min(1,wc/t),ok,elig,rate:elig?ok/elig:null,
-      records:[...logged].reverse(),todayOn:isLogged(h.id,today),started:startISO<=today};
+      records:[...logged].reverse(),todayOn:isLogged(h.id,today),started:startISO<=today,
+      noteOf:(iso)=>notes[`${h.id}|${iso}`]||"",
+      notesList:Object.keys(notes).filter(k=>k.startsWith(h.id+"|")).map(k=>({date:k.slice(h.id.length+1),text:notes[k]}))
+        .sort((a,b)=>a.date<b.date?1:-1)};
   };
 
 
@@ -852,16 +900,19 @@ export default function App(){
                 /* 항목 사이는 구분선 없이 여백만. 체크한 항목은 행 자체에 배경이 깔려 한눈에 구분 */
                 <div className="gl" style={{...GLASS,borderRadius:20,padding:6,display:"flex",flexDirection:"column",gap:4}}>
                   {rows.map((r,i)=>(
-                    <div key={r.h.id} className={r.onTap?"row-tap":""} onClick={r.onTap||undefined}
+                    <div key={r.h.id} className={r.onTap?"row-tap":""} {...(r.onTap?longPress(r.h,r.onTap):{})}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 10px",
-                        borderRadius:14,background:r.on?"rgba(var(--acc-rgb),.07)":"transparent",transition:"background .15s",
-                        cursor:r.onTap?"pointer":"default"}}>
+                        borderRadius:14,background:pressing===r.h.id?"rgba(var(--acc-rgb),.14)":r.on?"rgba(var(--acc-rgb),.07)":"transparent",
+                        transform:pressing===r.h.id?"scale(.985)":"none",transition:"background .15s,transform .15s",
+                        cursor:r.onTap?"pointer":"default",WebkitTouchCallout:"none",userSelect:"none"}}>
                       <div style={{display:"flex",alignItems:"center",gap:14,minWidth:0}}>
                         {/* 이모지마다 크기감이 달라 보이지 않도록 같은 원 안에 작게 */}
                         <span style={{width:40,height:40,borderRadius:"50%",background:r.on?"rgba(var(--acc-rgb),.12)":"rgba(255,255,255,.06)",flex:"0 0 auto",
                           display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,lineHeight:1}}><span className="emo">{emojiOf(r.h)}</span></span>
                         <div style={{minWidth:0}}>
-                          <div style={{fontSize:15,fontWeight:600,wordBreak:"keep-all"}}>{r.h.name}</div>
+                          <div style={{fontSize:15,fontWeight:600,wordBreak:"keep-all"}}>{r.h.name}
+                            {notes[noteKey(r.h.id,selDate)]&&<span title="메모 있음" style={{display:"inline-block",width:6,height:6,borderRadius:"50%",
+                              background:"var(--acc)",marginLeft:7,verticalAlign:"middle",position:"relative",top:-1}}/>}</div>
                           <div className="mono" style={{fontSize:13,color:r.done?C.ink:C.sub,marginTop:3,fontWeight:r.done?700:400}}>{r.sub}</div>
                         </div>
                       </div>
@@ -922,6 +973,8 @@ export default function App(){
           </div>
         )}
       </div>
+      {noteFor&&<NoteSheet C={C} h={noteFor.h} date={noteFor.date} initial={notes[noteKey(noteFor.h.id,noteFor.date)]||""}
+        onClose={()=>setNoteFor(null)} onSave={(t)=>saveNote(noteFor.h,noteFor.date,t)}/>}
       {detailHabit&&<HabitDetail C={C} st={habitStats(detailHabit)} today={today} isNotion={isNotion}
         onClose={closeDetail} onCheckToday={()=>toggleLog(detailHabit.id,today)}/>}
       {modal&&modal.type==="read"&&
@@ -1075,6 +1128,51 @@ function useVisualViewport(){
     return()=>{v.removeEventListener("resize",on);v.removeEventListener("scroll",on);};
   },[]);
   return vp;
+}
+
+/* 습관 메모 — 별똥별 편지와 같은 모달. 저장 버튼은 키보드 바로 위 */
+function NoteSheet({C,h,date,initial,onClose,onSave}){
+  const [text,setText]=useState(initial);
+  const [busy,setBusy]=useState(false);
+  const ref=useRef(null);
+  const vp=useVisualViewport();
+  useLayoutEffect(()=>{const el=ref.current;if(!el)return;el.focus({preventScroll:true});const n=el.value.length;el.setSelectionRange(n,n);},[]);
+  useEffect(()=>{ const o=document.body.style.overflow; document.body.style.overflow="hidden"; return()=>{document.body.style.overflow=o;}; },[]);
+  useEffect(()=>{const esc=(e)=>{if(e.key==="Escape")onClose();};document.addEventListener("keydown",esc);return()=>document.removeEventListener("keydown",esc);},[onClose]);
+  const d=fromISO(date), changed=text.trim()!==initial.trim();
+  const save=async(t)=>{setBusy(true);const ok=await onSave(t);setBusy(false);if(ok)onClose();};
+  const W={width:"100%",maxWidth:440};
+  return(
+    <div role="dialog" aria-modal="true" aria-label={`${h.name} 메모`}
+      style={{position:"fixed",left:0,right:0,top:vp.top,height:vp.h,zIndex:100,display:"flex",flexDirection:"column",alignItems:"center",padding:"16px 16px 0"}}>
+      <div onClick={()=>{if(!changed)onClose();}} style={{position:"absolute",inset:0,background:"rgba(4,5,10,.86)",animation:reduceMotion?"none":"fade .18s ease"}}/>
+      <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",...W,position:"relative",pointerEvents:"none"}}>
+        <div className="gl edge" style={{...W,maxHeight:"100%",display:"flex",flexDirection:"column",background:"rgba(24,24,32,.94)",position:"relative",
+          borderRadius:20,pointerEvents:"auto",WebkitBackdropFilter:"blur(20px)",backdropFilter:"blur(20px)",padding:"18px 16px",animation:reduceMotion?"none":"fade .18s ease"}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:12}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:20,fontWeight:800,letterSpacing:"-0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</div>
+              <div style={{fontSize:13,color:C.sub,marginTop:4}}>{d.getMonth()+1}월 {d.getDate()}일 {DAYS[(d.getDay()+6)%7]}요일 메모</div>
+            </div>
+            <button className="btn" onClick={onClose} style={{...BTN_FILL,height:36,padding:"0 14px",fontSize:14,flex:"0 0 auto"}}>취소</button>
+          </div>
+          <textarea ref={ref} value={text} maxLength={1000} onChange={e=>setText(e.target.value)}
+            placeholder="오늘 이 습관은 어땠어요?" aria-label="메모 내용"
+            style={{flex:1,minHeight:140,width:"100%",resize:"none",background:"transparent",border:"none",outline:"none",
+              color:C.ink,fontSize:17,lineHeight:1.7,fontFamily:"inherit",padding:0}}/>
+          {initial&&<button className="btn" onClick={()=>save("")} disabled={busy}
+            style={{alignSelf:"flex-start",background:"none",border:"none",padding:"8px 0 0",fontSize:14,color:"rgba(163,162,189,.7)",fontFamily:"inherit"}}>메모 지우기</button>}
+        </div>
+      </div>
+      <div style={{...W,position:"relative",flex:"0 0 auto",padding:"12px 0 calc(12px + env(safe-area-inset-bottom))",pointerEvents:"none"}}>
+        <button className="btn" disabled={!changed||busy} onMouseDown={e=>e.preventDefault()} onClick={()=>save(text)}
+          style={{...BTN_PRIMARY,display:"block",width:"100%",padding:"15px 0",fontSize:16,pointerEvents:"auto",
+            ...(changed&&!busy?{}:{background:"#34343F",color:"#8C8B9E",boxShadow:"none",cursor:"default"})}}>
+          {busy?"저장하는 중…":"저장"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* 별똥별 보내기 — 가운데 모달(기존보다 넓게). 열리자마자 입력 상태, 보내기 버튼은 키보드 바로 위에 떠 있음 */
@@ -1445,7 +1543,10 @@ function PaceCard({C,p,color}){
    세로 7칸(월~일) × N주. 칸 크기는 폭에 맞춰 늘어남(그리드 1fr + 정사각형). */
 const GRASS_BG={full:"var(--acc)",part:"rgba(var(--acc-rgb),.38)",empty:"rgba(255,255,255,.07)",
   pre:"rgba(255,255,255,.025)",future:"transparent"};
-function Grass({cell,endISO,weeks,today,gap=3,radius=3,showMonths=false,showDays=false}){
+/* 메모한 날 — 칸 가운데 작은 점 (진한 칸 위에선 어둡게, 나머지는 밝게) */
+const NoteDot=({st})=><i style={{position:"absolute",left:"50%",top:"50%",width:"30%",height:"30%",minWidth:3,minHeight:3,
+  transform:"translate(-50%,-50%)",borderRadius:"50%",background:st==="full"?"rgba(0,0,0,.55)":"#fff",opacity:st==="full"?1:.9}}/>;
+function Grass({cell,endISO,weeks,today,gap=3,radius=3,showMonths=false,showDays=false,note=()=>false}){
   const endMon=mondayOf(fromISO(endISO));
   const cols=Array.from({length:weeks},(_,i)=>addDays(endMon,-(weeks-1-i)*7));
   /* 그 주에 1일이 있으면(또는 첫 칸이면) 월 표시 */
@@ -1461,8 +1562,8 @@ function Grass({cell,endISO,weeks,today,gap=3,radius=3,showMonths=false,showDays
     if(showMonths) kids.push(<span key={"m"+ci} style={{...lab,width:0,overflow:"visible",alignSelf:"end"}}>{monthAt[ci]?`${monthAt[ci]}월`:""}</span>);
     weekDatesFrom(m).forEach(iso=>{
       const st=cell(iso);
-      kids.push(<span key={iso} title={iso} style={{aspectRatio:"1",borderRadius:radius,background:GRASS_BG[st],
-        boxShadow:iso===today?"0 0 0 1.5px rgba(255,255,255,.85)":st==="full"?"0 0 6px rgba(var(--acc-rgb),.35)":"none"}}/>);
+      kids.push(<span key={iso} title={iso} style={{position:"relative",aspectRatio:"1",borderRadius:radius,background:GRASS_BG[st],
+        boxShadow:iso===today?"0 0 0 1.5px rgba(255,255,255,.85)":st==="full"?"0 0 6px rgba(var(--acc-rgb),.35)":"none"}}>{note(iso)&&<NoteDot st={st}/>}</span>);
     });
   });
   return(
@@ -1487,8 +1588,8 @@ function HabitGrassRow({C,st,today,onOpen}){
           {st.cur>0?`🔥 ${st.cur}${st.unit} 연속`:`이번 주 ${Math.min(st.wc,st.t)}/${st.t}`}</div>
       </div>
       <div aria-hidden="true" style={{display:"grid",gridTemplateColumns:"repeat(7,12px)",gap:3,flex:"0 0 auto"}}>
-        {weeks.flat().map(iso=>{const k=st.cell(iso);return <span key={iso} title={iso} style={{width:12,height:12,borderRadius:3,
-          background:GRASS_BG[k],boxShadow:iso===today?"0 0 0 1.5px rgba(255,255,255,.85)":k==="full"?"0 0 6px rgba(var(--acc-rgb),.35)":"none"}}/>;})}
+        {weeks.flat().map(iso=>{const k=st.cell(iso);return <span key={iso} title={iso} style={{position:"relative",width:12,height:12,borderRadius:3,
+          background:GRASS_BG[k],boxShadow:iso===today?"0 0 0 1.5px rgba(255,255,255,.85)":k==="full"?"0 0 6px rgba(var(--acc-rgb),.35)":"none"}}>{st.noteOf(iso)&&<NoteDot st={k}/>}</span>;})}
       </div>
       <span aria-hidden="true" style={{fontSize:18,color:C.sub,lineHeight:1,flex:"0 0 auto"}}>›</span>
     </button>
@@ -1506,8 +1607,8 @@ function HabitDetail({C,st,today,isNotion,onClose,onCheckToday}){
   useEffect(()=>{ const o=document.body.style.overflow; document.body.style.overflow="hidden"; return()=>{document.body.style.overflow=o;}; },[]);
   useEffect(()=>{const esc=(e)=>{if(e.key==="Escape")onClose();};document.addEventListener("keydown",esc);return()=>document.removeEventListener("keydown",esc);},[onClose]);
 
-  /* 월별 기록 */
-  const byMonth=[]; for(const iso of st.records){const k=iso.slice(0,7);let g=byMonth[byMonth.length-1];if(!g||g.k!==k){g={k,items:[]};byMonth.push(g);}g.items.push(iso);}
+  /* 기록 = 메모를 남긴 날만, 월별로 */
+  const byMonth=[]; for(const n of st.notesList){const k=n.date.slice(0,7);let g=byMonth[byMonth.length-1];if(!g||g.k!==k){g={k,items:[]};byMonth.push(g);}g.items.push(n);}
   const circle={...BTN_FILL,width:40,height:40,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,textDecoration:"none"};
   const tile=(icon,label,big,foot,extra)=>(
     <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px",display:"flex",flexDirection:"column",minHeight:148}}>
@@ -1539,7 +1640,7 @@ function HabitDetail({C,st,today,isNotion,onClose,onCheckToday}){
 
         {/* 큰 잔디 + 기간 넘김 */}
         <div className="gl" style={{...GLASS,borderRadius:20,padding:"18px 16px 14px",marginBottom:12}}>
-          <Grass cell={st.cell} endISO={endISO} weeks={PAGE_WEEKS} today={today} showMonths showDays/>
+          <Grass cell={st.cell} endISO={endISO} weeks={PAGE_WEEKS} today={today} showMonths showDays note={(iso)=>!!st.noteOf(iso)}/>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:14}}>
             <button className="btn" onClick={()=>setPage(p=>Math.min(maxPage,p+1))} disabled={page>=maxPage} aria-label="이전 기간"
               style={{...circle,width:34,height:34,opacity:page>=maxPage?.35:1}}>‹</button>
@@ -1568,7 +1669,7 @@ function HabitDetail({C,st,today,isNotion,onClose,onCheckToday}){
         {/* 월별 기록 */}
         <div style={{fontSize:20,fontWeight:700,marginBottom:12}}>기록</div>
         {byMonth.length===0
-          ? <div style={{fontSize:14,color:C.sub}}>아직 체크한 날이 없어요</div>
+          ? <div style={{fontSize:14,color:C.sub,lineHeight:1.6}}>아직 남긴 메모가 없어요.<br/>오늘 탭에서 습관을 길게 누르면 메모할 수 있어요.</div>
           : byMonth.slice(0,6).map(g=>{
               const [y,m]=g.k.split("-");
               return(
@@ -1578,11 +1679,10 @@ function HabitDetail({C,st,today,isNotion,onClose,onCheckToday}){
                     <span style={{fontSize:12,fontWeight:700,color:"var(--on-acc)",background:"var(--acc)",borderRadius:999,padding:"2px 9px"}}>{g.items.length}</span>
                   </div>
                   <div className="gl" style={{...GLASS,borderRadius:16,padding:"4px 16px"}}>
-                    {g.items.map((iso,i)=>{const d=fromISO(iso);return(
-                      <div key={iso} style={{display:"flex",justifyContent:"space-between",padding:"12px 0",fontSize:15,
-                        borderTop:i?"1px solid rgba(255,255,255,.06)":"none"}}>
-                        <span>{d.getMonth()+1}월 {d.getDate()}일</span>
-                        <span style={{color:C.sub}}>{DAYS[(d.getDay()+6)%7]}요일</span>
+                    {g.items.map((n,i)=>{const d=fromISO(n.date);return(
+                      <div key={n.date} style={{padding:"14px 0",borderTop:i?"1px solid rgba(255,255,255,.06)":"none"}}>
+                        <div style={{fontSize:12,color:C.sub,marginBottom:4}}>{d.getMonth()+1}월 {d.getDate()}일 {DAYS[(d.getDay()+6)%7]}요일</div>
+                        <div style={{fontSize:15,lineHeight:1.6,color:C.ink,whiteSpace:"pre-line",wordBreak:"keep-all"}}>{n.text}</div>
                       </div>);})}
                   </div>
                 </div>

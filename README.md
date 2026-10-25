@@ -186,6 +186,26 @@ DB 이름을 다르게 쓰고 싶다면 Vercel 환경 변수에 `NOTION_MESSAGES
 
 ---
 
+## 습관 메모
+
+오늘 탭에서 습관을 **길게 누르면**(약 0.5초) 그날의 메모를 쓸 수 있습니다. 짧게 누르면 지금처럼 체크입니다.
+
+- 메모가 있는 날은 오늘 탭 습관 이름 옆에 작은 점, 회고 탭 잔디 칸 가운데에 점이 찍힙니다.
+- 습관 상세의 **기록**에는 메모를 남긴 날만 월별로 모여 보입니다.
+- 메모는 체크와 상관없이 남길 수 있습니다 (예: "오늘은 야근이라 못 함").
+
+**노션 "습관 메모" DB** — `습관 트래커` 페이지 안에 있습니다.
+
+| 노션 속성 | 타입 | 쓰임 |
+|---|---|---|
+| 메모 | title | 메모 내용 |
+| 날짜 | date | 메모한 날 |
+| 습관 | relation → Habits | 어떤 습관의 메모인지 |
+
+처음 한 번, 이 DB의 `···` → **Connections** 에서 앱 Integration을 연결해야 합니다. 연결 전에는 길게 눌렀을 때 안내만 뜨고 나머지는 그대로 동작합니다. 다른 DB를 쓰려면 Vercel 환경 변수 `NOTION_NOTES_DB` 에 그 DB ID를 넣으세요.
+
+---
+
 ## 노션 데이터 구조
 
 **Habits DB**
@@ -225,6 +245,7 @@ habit-atlas/
 │  ├─ habits.js     GET /api/habits — 습관 목록 + 소유자
 │  ├─ logs.js       GET/POST/DELETE /api/logs — 기록 조회·체크·해제
 │  ├─ messages.js   GET/POST/PATCH /api/messages — 응원 편지
+│  ├─ notes.js      GET/PUT /api/notes — 습관 메모
 │  └─ schema.js     GET /api/schema — 노션 DB 속성 확인 (진단용)
 ├─ src/
 │  ├─ App.jsx       화면 전체
