@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { guessEmoji } from "../api/_emoji.js";
 
 /* ────────────────────────────────────────────────────────────
    습관 별자리 — 1인 1별자리 구조
@@ -33,45 +34,8 @@ const FRIEND_HABITS = [
 const DEMO_ME_NAME = "초록";
 const DEMO_FRIEND_NAME = "소운";
 
-/* 습관 이름에서 대표 이모지 고르기.
-   노션 페이지에 아이콘을 직접 지정했다면 그게 항상 우선합니다.
-   위에서부터 먼저 걸리는 규칙이 이깁니다 — 구체적인 것을 위에 둘 것. */
-const EMOJI_RULES = [
-  [/취침|자기|잠자|수면|일찍 자|숙면/,            "🌙"],
-  [/기상|일어나|아침 기상|모닝/,                  "☀️"],
-  [/영어|잉글리시|english|회화|토익|토플|어학/i,  "💬"],
-  [/독서|책 |책읽|읽기|도서/,                     "📖"],
-  [/글쓰기|일기|블로그|포스팅|아티클|칼럼|작문/,  "✍️"],
-  [/회고|돌아보기|감사/,                          "🌱"],
-  [/포트폴리오|디자인|피그마|figma|스케치|그림|드로잉/i, "🎨"],
-  [/딥다이브|리서치|조사|탐색|기업|채용|공고|서치/, "🔍"],
-  [/코딩|개발|프로그래밍|알고리즘|깃|git|커밋/i,  "💻"],
-  [/명상|마음챙김|호흡|멍때리기/,                 "🧘"],
-  [/요가|스트레칭|필라테스/,                      "🤸"],
-  [/러닝|달리기|조깅|마라톤/,                     "👟"],
-  [/걷기|산책|만보|계단/,                         "🚶"],
-  [/수영/,                                        "🏊"],
-  [/등산|하이킹/,                                 "🥾"],
-  [/운동|헬스|짐|웨이트|근력|스쿼트|홈트/,        "🏃"],
-  [/물 |물마시|수분|하루 물/,                     "💧"],
-  [/식단|다이어트|샐러드|채소|야채|단백질|간식/,  "🥗"],
-  [/영양제|비타민|유산균|약 먹|복용/,             "💊"],
-  [/요리|밥 해|도시락/,                           "🍳"],
-  [/청소|정리|설거지|빨래|정돈/,                  "🧹"],
-  [/가계부|절약|저축|투자|지출|용돈|재테크/,      "💰"],
-  [/공부|학습|스터디|강의|인강|수업|자격증|시험/, "📚"],
-  [/피아노|기타|악기|음악|노래|보컬/,             "🎵"],
-  [/사진|촬영/,                                   "📷"],
-  [/유튜브|넷플릭스|스마트폰|휴대폰|sns|인스타/i, "📵"],
-  [/강아지|고양이|반려/,                          "🐾"],
-  [/스킨케어|피부|세안/,                          "🧴"],
-  [/연락|안부|통화|가족/,                         "📞"],
-];
-const guessEmoji = (name) => {
-  const s = String(name || "");
-  for (const [re, e] of EMOJI_RULES) if (re.test(s)) return e;
-  return "";
-};
+/* 습관 이모지 — 노션 페이지 아이콘이 기준. 서버가 아이콘이 빈 습관에 이름에 맞는 이모지를 넣어두고,
+   노션에서 아이콘을 바꾸면 그대로 따라갑니다. 여기선 로컬 모드·아이콘이 이미지인 경우의 대체값. */
 const emojiOf = (h) => h.emoji || guessEmoji(h.name) || "⭐";
 const hasBatchim = (s) => { const c=s.charCodeAt(s.length-1); return c>=0xAC00&&c<=0xD7A3&&(c-0xAC00)%28!==0; };
 /* 받침 있으면 '으로'(ㄹ 받침은 '로'), 없으면 '로' — 초록으로, 소운으로 */
@@ -133,10 +97,10 @@ function GlowStar({x,y,ratio,color,complete,scale=1,twinkle=0}){
   );
 }
 
-/* 별자리 선 — 별 둘레에서 끊기고, 둘 다 빛나면 실선·아니면 점선 */
-function ConstLines({seq,scale=1,dim=1}){
-  return seq.slice(1).map((b,i)=>{
-    const a=seq[i];
+/* 별자리 선 — 별 둘레에서 끊기고, 둘 다 빛나면 실선·아니면 점선.
+   pairs = [[{s,p},{s,p}], …] 이어줄 별 두 개씩 */
+function ConstLines({pairs,scale=1,dim=1}){
+  return pairs.map(([a,b],i)=>{
     const dx=b.p.x-a.p.x,dy=b.p.y-a.p.y,L=Math.hypot(dx,dy)||1;
     const gap=(s)=>(s.complete?11:s.ratio>0?7:4)*scale;
     const ga=gap(a.s),gb=gap(b.s); if(L<=ga+gb) return null;
@@ -172,22 +136,45 @@ const LAYOUTS = {
   7: [[-38,8],[-22,-24],[0,26],[20,-20],[38,4],[18,28],[-16,14]],
   8: [[-40,0],[-24,-26],[-6,20],[16,-22],[36,8],[28,30],[6,-4],[-20,26]],
 };
-const layoutFor = (n) => {
+/* 9개 이상 — 동그라미 대신 실제 별자리처럼: 타원 안에 고르게 흩뿌리고(해바라기 배치 + 흔들기),
+   서로 너무 붙은 별은 밀어낸 뒤, 가까운 별끼리 가지 치듯 잇습니다(최소 신장 트리 + 작은 고리 하나).
+   seed가 같으면 언제나 같은 모양 — 초록·소운의 별자리는 서로 다른 모양이 됩니다 */
+const layoutFor = (n, seed=0) => {
   if (LAYOUTS[n]) return LAYOUTS[n];
-  return Array.from({length:n}, (_,i) => {
-    const a = (i/n)*Math.PI*2 - Math.PI/2;
-    return [Math.cos(a)*36, Math.sin(a)*30];
+  const RX=48, RY=33, GOLD=2.39996;
+  const pts=Array.from({length:n},(_,i)=>{
+    const r=Math.sqrt((i+.5)/n)*(.82+rnd(i,seed+3)*.3);
+    const a=i*GOLD+seed*1.7+(rnd(i,seed+7)-.5)*.9;
+    return [Math.cos(a)*r*RX, Math.sin(a)*r*RY];
   });
+  /* 겹침 풀기 — 최소 간격을 지키도록 몇 번 밀어내고, 타원 밖으로 나가면 안쪽으로 */
+  const minD=Math.min(17, 64/Math.sqrt(n));
+  for(let it=0;it<40;it++){
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
+      const dx=pts[j][0]-pts[i][0],dy=(pts[j][1]-pts[i][1])*1.25,d=Math.hypot(dx,dy)||.01;
+      if(d<minD){const k=(minD-d)/d/2;pts[i][0]-=dx*k;pts[i][1]-=dy*k/1.25;pts[j][0]+=dx*k;pts[j][1]+=dy*k/1.25;}
+    }
+    for(const p of pts){const e=Math.hypot(p[0]/RX,p[1]/RY);if(e>1){p[0]/=e;p[1]/=e;}}
+  }
+  return pts;
 };
-
-/* 별자리 연결선 순서 (가장 자연스럽게 이어지는 순서) */
-const CONNECTION_ORDER = {
-  1:[0],2:[0,1],3:[0,2,1],
-  4:[0,1,3,2],5:[0,1,2,3,4],
-  6:[0,1,5,2,4,3],7:[0,1,2,3,4,5,6],
-  8:[0,1,2,3,4,5,6,7],
+/* 가까운 별끼리 잇기 — 최소 신장 트리(가지 모양)에, 짧은 고리 하나를 더해 단조롭지 않게 */
+const treeEdges = (pts) => {
+  const n=pts.length, d=(i,j)=>Math.hypot(pts[i].x-pts[j].x,pts[i].y-pts[j].y);
+  const inT=new Set([0]), edges=[];
+  while(inT.size<n){
+    let best=null;
+    for(const i of inT)for(let j=0;j<n;j++)if(!inT.has(j)&&(!best||d(i,j)<best[2]))best=[i,j,d(i,j)];
+    edges.push([best[0],best[1]]); inT.add(best[1]);
+  }
+  if(n>=10){
+    const has=new Set(edges.map(([a,b])=>a<b?`${a}-${b}`:`${b}-${a}`));
+    let extra=null;
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)if(!has.has(`${i}-${j}`)&&(!extra||d(i,j)<extra[2]))extra=[i,j,d(i,j)];
+    if(extra)edges.push([extra[0],extra[1]]);
+  }
+  return edges;
 };
-const orderFor = (n) => CONNECTION_ORDER[n] || Array.from({length:n},(_,i)=>i);
 
 const toISO=(d)=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return `${y}-${m}-${day}`;};
 const fromISO=(s)=>{const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d);};
@@ -273,10 +260,8 @@ export default function App(){
   const [selDate,setSelDate]=useState(toISO(new Date()));
   const [loaded,setLoaded]=useState(!!cache0);
   const [showManage,setShowManage]=useState(false);
-  const [burst,setBurst]=useState(0);
+  const [cheer,setCheer]=useState(null);   // 이번 주 목표를 채운 순간의 축하 {key,h,x,y}
   const [selStar,setSelStar]=useState(null);
-  const prevComplete=useRef(-1);
-  const lastToggle=useRef(0);
 
   /* 노션 연결 상태: loading | notion | local */
   const [sync,setSync]=useState({mode:cache0?"notion":"loading",error:""});
@@ -467,17 +452,24 @@ export default function App(){
   const [pressing,setPressing]=useState(null);
   const longPress=(h,onTap)=>({
     onPointerDown:(e)=>{const p=press.current;clearTimeout(p.t);p.armed=false;p.x=e.clientX;p.y=e.clientY;
-      p.t=setTimeout(()=>{p.armed=true;setPressing(h.id);try{navigator.vibrate&&navigator.vibrate(12);}catch(_){}} ,450);},
+      p.t=setTimeout(()=>{p.armed=true;setPressing(h.id);try{window.getSelection()?.removeAllRanges();navigator.vibrate&&navigator.vibrate(12);}catch(_){}} ,450);},
     onPointerMove:(e)=>{const p=press.current;if(Math.hypot(e.clientX-p.x,e.clientY-p.y)>10){clearTimeout(p.t);if(!p.armed)p.t=null;}},
     onPointerUp:()=>{const p=press.current;clearTimeout(p.t);if(p.armed){p.armed=false;p.skip=true;setPressing(null);openNote(h,selDate);}},
     onPointerCancel:()=>{const p=press.current;clearTimeout(p.t);p.armed=false;setPressing(null);},
     onContextMenu:(e)=>e.preventDefault(),
-    onClick:()=>{const p=press.current;if(p.skip){p.skip=false;return;}onTap();},
+    onDragStart:(e)=>e.preventDefault(),
+    onClick:(e)=>{const p=press.current;if(p.skip){p.skip=false;return;}onTap(e);},
   });
 
-  const toggleLog=async(id,d)=>{
+  /* el: 누른 행 — 체크칸 자리에서 별이 터져 나오도록 */
+  const toggleLog=async(id,d,el)=>{
     const wasOn=isLogged(id,d);
-    lastToggle.current=Date.now();
+    /* 이 체크로 그 주의 목표 횟수를 딱 채웠다면 축하 */
+    const h=habits.find(x=>x.id===id);
+    if(!wasOn&&h&&weekCount(id,weekDatesFrom(mondayOf(fromISO(d))))+1===tgtOf(h)){
+      const r=(el?.lastElementChild||el)?.getBoundingClientRect?.();
+      setCheer({key:Date.now(),h,x:r?r.left+r.width/2:window.innerWidth/2,y:r?r.top+r.height/2:window.innerHeight/2});
+    }
     applyToggle(id,d);
     if(sync.mode!=="notion") return;
     const key=`${id}|${d}`;
@@ -521,7 +513,6 @@ export default function App(){
   const activeHabits=person==="me"?myHabits:friendHabits;
   const detailHabit=detailId?habits.find(h=>h.id===detailId)||null:null;
 
-  const myCompleteCount=myHabits.reduce((n,h)=>n+(weekCount(h.id)>=tgtOf(h)?1:0),0);
 
   /* 이 기기의 주인 — 편지는 이 이름 앞으로 온 것만 보여줍니다 */
   const who=deviceMe||meName;
@@ -567,13 +558,7 @@ export default function App(){
     if(isNotion&&person==="friend"&&friendHabits.length===0) setPerson("me");
   },[isNotion,friendHabits.length,person]);
 
-  useEffect(()=>{
-    if(!loaded||selDate!==today){prevComplete.current=myCompleteCount;return;}
-    /* 직접 체크했을 때만 — 노션에서 새로 받은 데이터로 숫자가 늘어난 건 축하하지 않음 */
-    if(prevComplete.current!==-1&&myCompleteCount>prevComplete.current&&Date.now()-lastToggle.current<3000)setBurst(b=>b+1);
-    prevComplete.current=myCompleteCount;
-  },[myCompleteCount,loaded,selDate,today]);
-  useEffect(()=>{if(!burst)return;const t=setTimeout(()=>setBurst(0),2000);return()=>clearTimeout(t);},[burst]);
+  useEffect(()=>{if(!cheer)return;const t=setTimeout(()=>setCheer(null),reduceMotion?2200:2600);return()=>clearTimeout(t);},[cheer]);
 
   const ratioAt=(h,mon)=>{const wd=weekDatesFrom(mon);const c=wd.reduce((n,d)=>n+(isLogged(h.id,d)?1:0),0);return Math.min(1,c/tgtOf(h));};
   const completedIn=(h,a,b)=>{let c=0;for(let i=a;i<b;i++)if(ratioAt(h,addDays(mondayOf(fromISO(today)),-i*7))>=1)c++;return c;};
@@ -707,7 +692,8 @@ export default function App(){
         button,input,textarea,select{font-family:inherit}
         .tap{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;transition:transform .18s cubic-bezier(.34,1.56,.64,1),border-color .2s,background .25s,box-shadow .25s}
         .tap:active{transform:scale(.96)}
-        .row-tap{-webkit-tap-highlight-color:transparent;user-select:none}
+        /* 길게 눌러도 글자가 선택·돋보기·공유 메뉴로 잡히지 않게 — 자식까지 전부 (iOS는 -webkit- 접두사만 들음) */
+        .row-tap,.row-tap *{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
         .row-tap:active > span{transform:scale(.9)}
         .btn{transition:opacity .15s,transform .12s;cursor:pointer;-webkit-tap-highlight-color:transparent}.btn:hover{opacity:.85}.btn:active{transform:translateY(1px)}
         .fade{animation:fade .34s ease}
@@ -716,6 +702,20 @@ export default function App(){
         @media(prefers-reduced-motion:reduce){.sp-line{animation:none;opacity:1;transform:none}}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
         .conf{position:absolute;left:50%;top:44%;width:6px;height:6px;opacity:1;border-radius:50%;animation:cburst 1.4s ease-out forwards}
         @keyframes cburst{to{transform:translate(var(--tx),var(--ty));opacity:0}}
+        /* 목표 달성 축하 */
+        .gc-bit{opacity:0;animation:gcBit 1.1s cubic-bezier(.15,.75,.3,1) forwards}
+        @keyframes gcBit{0%{opacity:1;transform:translate(0,0) scale(.3) rotate(0)}60%{opacity:1}
+          100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1) rotate(var(--rot))}}
+        .gc-ring{opacity:0;animation:gcRing .8s ease-out forwards}
+        @keyframes gcRing{0%{opacity:.9;transform:scale(.4)}100%{opacity:0;transform:scale(2.2)}}
+        .gc-scrim{opacity:0;animation:gcScrim 2.6s ease forwards}
+        @keyframes gcScrim{0%{opacity:0}12%,80%{opacity:1}100%{opacity:0}}
+        .gc-card{transform:translate(-50%,-50%);animation:gcCard 2.6s ease forwards}
+        @keyframes gcCard{0%{opacity:0;transform:translate(-50%,-38%) scale(.85)}14%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+          80%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-56%) scale(.98)}}
+        .gc-star{animation:gcStar 2.6s cubic-bezier(.2,.8,.2,1) forwards}
+        @keyframes gcStar{0%{transform:scale(0) rotate(-90deg)}22%{transform:scale(1.15) rotate(8deg)}34%,100%{transform:scale(1) rotate(0)}}
+        @media(prefers-reduced-motion:reduce){.gc-card{animation:none}.gc-scrim{animation:none;opacity:1}}
         .glow-pulse{animation:gp 2.4s ease-in-out infinite}@keyframes gp{0%,100%{opacity:.7}50%{opacity:1}}
         /* ── 로딩: 별자리가 이어지는 애니메이션 + 실제 화면과 같은 자리의 뼈대 ── */
         .sk{border-radius:16px;background:linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 45%,rgba(255,255,255,.04) 90%);
@@ -864,7 +864,7 @@ export default function App(){
                   meStars={myStars} frStars={frStars}
                   activeColor={activeColor} allComplete={allComplete}
                   selStar={selStar} setSelStar={setSelStar}
-                  burst={burst} person={person}
+                  person={person}
                   meName={meName} friendName={friendName}/>
               </div>
               <ProgressArea C={C} embedded rows={[{who:meName,color:GREEN,items:meProg},{who:friendName,color:VIOLET,items:frProg}]}/>
@@ -887,7 +887,7 @@ export default function App(){
             {(()=>{
               const rows=(isNotion||person==="me")
                 ? activeHabits.map(h=>{const wc=weekCount(h.id),tgt=tgtOf(h);
-                    return {h,on:isLogged(h.id,selDate),sub:wc>=tgt?"완성":`${wc}/${tgt}`,done:wc>=tgt,onTap:()=>toggleLog(h.id,selDate)};})
+                    return {h,on:isLogged(h.id,selDate),sub:wc>=tgt?"완성":`${wc}/${tgt}`,done:wc>=tgt,onTap:(e)=>toggleLog(h.id,selDate,e?.currentTarget)};})
                 : sortHabits(FRIEND_HABITS).map(h=>{const tgt=tgtOf(h),d=h.done>=tgt;
                     return {h,on:d,sub:d?"완성":`${h.done}/${tgt}`,done:d,onTap:null};});
               if(!rows.length) return isNotion&&
@@ -904,7 +904,7 @@ export default function App(){
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 10px",
                         borderRadius:14,background:pressing===r.h.id?"rgba(var(--acc-rgb),.14)":r.on?"rgba(var(--acc-rgb),.07)":"transparent",
                         transform:pressing===r.h.id?"scale(.985)":"none",transition:"background .15s,transform .15s",
-                        cursor:r.onTap?"pointer":"default",WebkitTouchCallout:"none",userSelect:"none"}}>
+                        cursor:r.onTap?"pointer":"default"}}>
                       <div style={{display:"flex",alignItems:"center",gap:14,minWidth:0}}>
                         {/* 이모지마다 크기감이 달라 보이지 않도록 같은 원 안에 작게 */}
                         <span style={{width:40,height:40,borderRadius:"50%",background:r.on?"rgba(var(--acc-rgb),.12)":"rgba(255,255,255,.06)",flex:"0 0 auto",
@@ -988,6 +988,7 @@ export default function App(){
         <LetterBox C={C} letters={letters} who={who} owners={owners.length>1?owners:[meName,friendName]}
           onPick={(l)=>setModal({type:"read",letter:l})} onClose={()=>setModal(null)}
           onOwner={setOwnerOfDevice}/>}
+      {cheer&&<GoalCheer key={cheer.key} c={cheer}/>}
       {toast&&<Toast C={C} text={toast}/>}
       {splash!=="off"&&<Splash out={splash==="out"} name={person==="me"?meName:friendName} color={person==="me"?GREEN:VIOLET}/>}
     </div>
@@ -1275,6 +1276,52 @@ function LetterBox({C,letters,who,owners,onPick,onClose,onOwner}){
   );
 }
 
+/* 이번 주 목표를 채운 순간 — 체크칸에서 별 조각이 흩어지고, 가운데에 큰 별이 떠오르며 축하 문구.
+   화면 터치는 막지 않고(pointer-events:none) 2.6초 뒤 저절로 사라집니다 */
+function GoalCheer({c}){
+  const {h,x,y}=c;
+  const bits=useMemo(()=>Array.from({length:12},(_,i)=>{
+    const a=i/12*Math.PI*2+rnd(i,c.key%97)*.5, d=46+rnd(i,c.key%89+1)*54;
+    return {dx:Math.cos(a)*d, dy:Math.sin(a)*d-18, r:4+rnd(i,c.key%83+2)*6, rot:(rnd(i,5)-.5)*220, delay:rnd(i,6)*.12};
+  }),[c.key]);
+  const freq=h.kind==="daily"?"매일":`주 ${h.target}회`;
+  return(
+    <div aria-live="polite" style={{position:"fixed",inset:0,zIndex:60,pointerEvents:"none"}}>
+      {/* 아래 글자와 겹쳐 읽히지 않도록 화면을 잠깐 어둡게 — 가운데일수록 더 */}
+      <div className="gc-scrim" style={{position:"absolute",inset:0,
+        background:"radial-gradient(70% 45% at 50% 40%,rgba(4,4,9,.9) 0%,rgba(4,4,9,.72) 55%,rgba(4,4,9,.55) 100%)"}}/>
+      {!reduceMotion&&<svg width="100%" height="100%" style={{position:"absolute",inset:0,overflow:"visible"}}>
+        <circle cx={x} cy={y} r="34" fill="none" stroke="var(--acc)" strokeWidth="1.5" className="gc-ring"
+          style={{transformOrigin:`${x}px ${y}px`}}/>
+        {bits.map((b,i)=>(
+          <g key={i} className="gc-bit" style={{"--dx":`${b.dx}px`,"--dy":`${b.dy}px`,"--rot":`${b.rot}deg`,
+            transformOrigin:`${x}px ${y}px`,animationDelay:`${b.delay}s`}}>
+            <path d={sparklePath(x,y,b.r)} fill={i%3===0?"#fff":"var(--acc)"} filter="url(#glow)"/>
+          </g>
+        ))}
+      </svg>}
+      <div className="gc-card" style={{position:"absolute",left:"50%",top:"40%",display:"flex",flexDirection:"column",alignItems:"center",
+        textAlign:"center",width:"min(80vw,300px)"}}>
+        <svg width="132" height="132" viewBox="-66 -66 132 132" style={{overflow:"visible"}}>
+          <circle r="64" fill="rgba(var(--acc-rgb),.16)" filter="url(#bokeh)"/>
+          <circle r="34" fill="rgba(var(--acc-rgb),.35)" filter="url(#bokeh)"/>
+          <g className={reduceMotion?"":"gc-star"}>
+            <path d={sparklePath(0,0,40)} fill="var(--acc)" filter="url(#glow)"/>
+            <path d={sparklePath(0,0,22)} fill="#fff" opacity=".9"/>
+          </g>
+          <path d={sparklePath(42,-34,7)} fill="#fff" className={reduceMotion?"":"twk"}/>
+          <path d={sparklePath(-46,26,5)} fill="var(--acc)" className={reduceMotion?"":"twk"} style={{animationDelay:"1.1s"}}/>
+        </svg>
+        <div style={{marginTop:4,fontSize:20,fontWeight:800,color:"#fff",textShadow:"0 2px 16px #000"}}>이번 주 목표 달성!</div>
+        <div style={{marginTop:6,fontSize:14,fontWeight:600,color:"var(--acc)",textShadow:"0 2px 12px #000",
+          maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          <span className="emo">{emojiOf(h)}</span> {h.name}</div>
+        <div className="mono" style={{marginTop:4,fontSize:13,color:"#C9C8DD",textShadow:"0 2px 12px #000"}}>{freq} 완성 · 별 하나가 환하게 켜졌어요</div>
+      </div>
+    </div>
+  );
+}
+
 function Toast({C,text}){
   return (
     <div className="fade" style={{position:"fixed",left:"50%",bottom:22,transform:"translateX(-50%)",zIndex:50,
@@ -1292,7 +1339,7 @@ function Toast({C,text}){
 ══════════════════════════════════════════════════════════ */
 
 
-function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSelStar,burst,person,meName,friendName}){
+function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSelStar,person,meName,friendName}){
   const bg=useMemo(()=>Array.from({length:70},(_,i)=>({x:rnd(i,1)*560,y:rnd(i,2)*296,r:.35+rnd(i,3)*.9,o:.15+rnd(i,4)*.45,d:rnd(i,5)*5})),[]);
   const bokeh=useMemo(()=>Array.from({length:9},(_,i)=>({x:30+rnd(i,7)*500,y:20+rnd(i,8)*256,r:1.6+rnd(i,9)*2.2,o:.18+rnd(i,10)*.25})),[]);
 
@@ -1335,26 +1382,27 @@ function ConstellationSky({meStars,frStars,activeColor,allComplete,selStar,setSe
         onSelect={id=>{ if(person==="friend") setSelStar(k=>k===id?null:id); }}
         dim={person==="me"}/>
 
-      {burst>0 && <BurstEffect
-        cx={person==="me"?ME_C[0]:FR_C[0]} cy={person==="me"?ME_C[1]:FR_C[1]}
-        color={person==="me"?GREEN:VIOLET}/>}
     </svg>
   </>);
 }
 
 function buildPoints(stars, center, scale=1.0){
   const n=stars.length; if(!n) return [];
-  const layout=layoutFor(n);
+  const layout=layoutFor(n, center[0]%7);
   return stars.map((s,i)=>({id:s.id, x:center[0]+layout[i][0]*scale, y:center[1]+layout[i][1]*scale}));
 }
 
 /* 별자리 컴포넌트: 선 + 별들 */
 function OneStar({stars,pts,color,allComplete,selStar,onSelect,dim,scale=1}){
   if(!stars.length||!pts.length) return null;
-  const seq=connOrder(stars.length).map(i=>({s:stars[i],p:pts[i]}));
+  const node=(i)=>({s:stars[i],p:pts[i]});
+  const order=connOrder(stars.length);
+  const pairs=LAYOUTS[stars.length]
+    ? order.slice(1).map((b,k)=>[node(order[k]),node(b)])
+    : treeEdges(pts).map(([a,b])=>[node(a),node(b)]);
   return(
     <g opacity={dim?0.6:1}>
-      <ConstLines seq={seq} scale={scale}/>
+      <ConstLines pairs={pairs} scale={scale}/>
       {stars.map((s,i)=>{
         const pt=pts[i];
         return(
@@ -1390,18 +1438,6 @@ function StarTooltip({star,pt,color}){
       <div style={{fontSize:14,fontWeight:700,color:"#EEEDF7"}}><span className="emo">{star.emoji}</span> {star.name}</div>
       <div className="mono" style={{fontSize:12,fontWeight:700,color,marginTop:3}}>{star.done}/{star.target} ({pct}%)</div>
     </div>
-  );
-}
-
-/* 목표를 채운 순간 — 부드러운 빛 번짐과 큰 반짝임 */
-function BurstEffect({cx,cy,color}){
-  if(reduceMotion) return null;
-  return(
-    <g style={{pointerEvents:"none"}} className="fade">
-      <circle cx={cx} cy={cy} r="90" fill={`url(#neb-${toneKey(color)})`}/>
-      <circle cx={cx} cy={cy} r="40" fill={`url(#halo-${toneKey(color)})`} opacity=".8"/>
-      <path d={sparklePath(cx,cy,26)} fill="#fff" filter="url(#glow)"/>
-    </g>
   );
 }
 

@@ -3,7 +3,8 @@
 
    노션 Habits DB에서 '활성'이 켜진 습관을 소유자 정보와 함께 가져옵니다. */
 
-import { CFG, queryAll, dbProps, byName, byType, readText, requireToken, fail } from "./_notion.js";
+import { CFG, notion, queryAll, dbProps, byName, byType, readText, requireToken, fail } from "./_notion.js";
+import { guessEmoji } from "./_emoji.js";
 
 /* "매일" → 매일 7회 / "주3회" → 주 3회 */
 export function parseFreq(label) {
@@ -55,15 +56,23 @@ export default async function handler(req, res) {
       ...(pActive ? { filter: { property: pActive, checkbox: { equals: true } } } : {}),
     });
 
+    /* 아이콘이 없는 습관 → 이름에 맞는 이모지를 노션 페이지 아이콘으로 한 번 지정.
+       그 뒤로는 노션 아이콘이 기준이라, 노션에서 아이콘을 바꾸면 앱에도 그대로 반영됩니다. */
+    const autoIcons = [];
     const habits = rows.map((page) => {
       const p = page.properties || {};
       const freq = parseFreq(pFreq ? p[pFreq]?.select?.name : "");
+      const name = plain(p[pTitle]?.title) || "(이름 없음)";
+      let emoji = page.icon?.type === "emoji" ? page.icon.emoji : "";
+      if (!page.icon) {
+        emoji = guessEmoji(name) || "⭐";
+        autoIcons.push(notion(`/pages/${page.id}`, { method: "PATCH", body: { icon: { type: "emoji", emoji } } })
+          .catch(() => {}));   // 권한이 없거나 실패해도 화면엔 추측값을 그대로 씁니다
+      }
       return {
         id: page.id,
-        name: plain(p[pTitle]?.title) || "(이름 없음)",
-        /* 노션 페이지 아이콘이 있으면 그걸 쓰고, 없으면 빈 값으로 두어
-           화면에서 습관 이름에 맞는 이모지를 골라 쓰도록 합니다. */
-        emoji: page.icon?.type === "emoji" ? page.icon.emoji : "",
+        name,
+        emoji,
         color: pColor ? p[pColor]?.select?.name || "" : "",
         owner: pOwner ? readText(p[pOwner]) : "",
         /* 목표를 시작한 시점 — 회고에서 '시작 전'과 '못 한 주'를 구분하는 데 씁니다.
@@ -72,6 +81,8 @@ export default async function handler(req, res) {
         ...freq,
       };
     });
+
+    await Promise.all(autoIcons);
 
     /* DB에 등장하는 소유자 목록 (순서 유지) */
     const owners = [...new Set(habits.map((h) => h.owner).filter(Boolean))];
