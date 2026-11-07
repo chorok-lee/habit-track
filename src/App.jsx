@@ -111,15 +111,13 @@ function ConstLines({pairs,scale=1,dim=1}){
   });
 }
 
-/* 밤하늘 별 — 스플래시에선 남색→보라 하늘째로, 본 화면에선 거의 검은 배경 위 별만 은은하게 */
-function NightBG({vivid=false}){
-  const stars=useMemo(()=>Array.from({length:90},(_,i)=>({x:rnd(i,1)*100,y:rnd(i,2)*100,r:.5+rnd(i,3)*1.1,o:.25+rnd(i,4)*.6,d:rnd(i,5)*6})),[]);
+/* 밤하늘 별 — 거의 검은 배경 위에 별만 은은하게 */
+function NightBG(){
+  const stars=useMemo(()=>Array.from({length:90},(_,i)=>({x:rnd(i,1)*100,y:rnd(i,2)*100,r:.5+rnd(i,3)*1.1,o:.25+rnd(i,4)*.6})),[]);
   return(
-    <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
-      background:vivid?"linear-gradient(180deg,#040409 0%,#09080F 45%,#15111F 78%,#211A2C 100%)":"transparent"}}>
+    <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none"}}>
       <svg width="100%" height="100%" style={{position:"absolute",inset:0}}>
-        {stars.map((t,i)=><circle key={i} className={vivid&&i%3===0&&!reduceMotion?"twk":""} cx={`${t.x}%`} cy={`${t.y}%`} r={vivid?t.r:t.r*.75}
-          fill="#fff" opacity={vivid?t.o:t.o*.22} style={{animationDelay:`${t.d}s`}}/>)}
+        {stars.map((t,i)=><circle key={i} cx={`${t.x}%`} cy={`${t.y}%`} r={t.r*.75} fill="#fff" opacity={t.o*.22}/>)}
       </svg>
     </div>
   );
@@ -253,12 +251,7 @@ function logsToMap(rows){
 
 export default function App(){
   const [cache0]=useState(readCache);
-  /* 스플래시: 인사 두 줄이 차례로 떠오른 뒤(약 2.4초) 0.5초에 걸쳐 사라짐 (데이터는 그 사이 뒤에서 불러옴) */
-  const [splash,setSplash]=useState("on");   // on → out → off
-  useEffect(()=>{
-    const a=setTimeout(()=>setSplash("out"),2400), b=setTimeout(()=>setSplash("off"),2900);
-    return()=>{clearTimeout(a);clearTimeout(b);};
-  },[]);      // 지난번 데이터 — 있으면 로딩 없이 바로 보여줌
+  // 지난번 데이터 — 있으면 로딩 없이 바로 보여줌
   const [habits,setHabits]=useState(()=>cache0?cache0.hs.habits:[]);   // 판정 전에는 비워둠 (예시 데이터 깜빡임 방지)
   const [logs,setLogs]=useState(()=>cache0?cache0.logs:{});
   const [tab,setTab]=useState("sky");
@@ -703,9 +696,7 @@ export default function App(){
         .row-tap:active > span{transform:scale(.9)}
         .btn{transition:opacity .15s,transform .12s;cursor:pointer;-webkit-tap-highlight-color:transparent}.btn:hover{opacity:.85}.btn:active{transform:translateY(1px)}
         .fade{animation:fade .34s ease}
-        .sp-line{opacity:0;transform:translateY(12px);animation:spIn .7s cubic-bezier(.2,.8,.2,1) forwards}
-        @keyframes spIn{to{opacity:1;transform:none}}
-        @media(prefers-reduced-motion:reduce){.sp-line{animation:none;opacity:1;transform:none}}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
         .conf{position:absolute;left:50%;top:44%;width:6px;height:6px;opacity:1;border-radius:50%;animation:cburst 1.4s ease-out forwards}
         @keyframes cburst{to{transform:translate(var(--tx),var(--ty));opacity:0}}
         /* 목표 달성 축하 */
@@ -996,7 +987,6 @@ export default function App(){
           onOwner={setOwnerOfDevice}/>}
       {cheer&&<GoalCheer key={cheer.key} c={cheer}/>}
       {toast&&<Toast C={C} text={toast}/>}
-      {splash!=="off"&&<Splash out={splash==="out"} name={person==="me"?meName:friendName} color={person==="me"?GREEN:VIOLET}/>}
     </div>
   );
 }
@@ -1053,23 +1043,6 @@ function LoadingView({C,tab}){
         : <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {[0,1,2].map(i=><div key={i} className="sk" style={{height:118,animationDelay:`${i*0.08}s`}}/>)}
           </div>}
-    </div>
-  );
-}
-
-/* 스플래시 — 밤하늘 위에 인사가 한 줄씩 떠오름: "소운아," → "오늘도 수고 많았어" (문구는 5개 중 하나) */
-const callName=(n)=>{const c=n.charCodeAt(n.length-1);return c>=0xAC00&&c<=0xD7A3&&(c-0xAC00)%28!==0?`${n}아`:`${n}야`;};
-const SPLASH_LINES=["오늘도 수고 많았어","오늘 하루는 어땠어?","왔구나, 기다리고 있었어","천천히 해도 괜찮아","오늘도 반가워"];
-function Splash({out,name,color}){
-  const [line]=useState(()=>SPLASH_LINES[Math.floor(Math.random()*SPLASH_LINES.length)]);   // 열 때마다 하나씩 돌아가며
-  return(
-    <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:200,
-      opacity:out?0:1,transition:reduceMotion?"none":"opacity .5s ease",pointerEvents:out?"none":"auto"}}>
-      <NightBG vivid/>
-      <div style={{position:"absolute",left:28,right:28,bottom:"18%",fontSize:22,fontWeight:500,lineHeight:1.5,letterSpacing:"-0.01em"}}>
-        <div className="sp-line" style={{animationDelay:".25s",color,fontWeight:600}}>{callName(name)},</div>
-        <div className="sp-line" style={{animationDelay:".95s",color:"#F3F2FA"}}>{line}</div>
-      </div>
     </div>
   );
 }
